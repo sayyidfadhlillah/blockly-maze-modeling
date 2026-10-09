@@ -16,9 +16,10 @@ public final class MomotRunContext {
         public final Path outputDirectory;
         public final IParetoFrontSubscriber paretoFrontSubscriber;
         public final boolean stopOnFirstGoal;
+        public final int seed;
 
         public Config(int populationSize, int maxEvaluations, int nrRuns, int solutionLength, Path outputDirectory) {
-            this(populationSize, maxEvaluations, nrRuns, solutionLength, outputDirectory, null, false);
+            this(populationSize, maxEvaluations, nrRuns, solutionLength, outputDirectory, null, false, -1);
         }
 
         public Config(
@@ -28,7 +29,7 @@ public final class MomotRunContext {
                 int solutionLength,
                 Path outputDirectory,
                 IParetoFrontSubscriber paretoFrontSubscriber) {
-            this(populationSize, maxEvaluations, nrRuns, solutionLength, outputDirectory, paretoFrontSubscriber, false);
+            this(populationSize, maxEvaluations, nrRuns, solutionLength, outputDirectory, paretoFrontSubscriber, false, -1);
         }
 
         public Config(
@@ -39,6 +40,18 @@ public final class MomotRunContext {
                 Path outputDirectory,
                 IParetoFrontSubscriber paretoFrontSubscriber,
                 boolean stopOnFirstGoal) {
+            this(populationSize, maxEvaluations, nrRuns, solutionLength, outputDirectory, paretoFrontSubscriber, stopOnFirstGoal, -1);
+        }
+
+        public Config(
+                int populationSize,
+                int maxEvaluations,
+                int nrRuns,
+                int solutionLength,
+                Path outputDirectory,
+                IParetoFrontSubscriber paretoFrontSubscriber,
+                boolean stopOnFirstGoal,
+                int seed) {
             this.populationSize = populationSize;
             this.maxEvaluations = maxEvaluations;
             this.nrRuns = nrRuns;
@@ -46,6 +59,7 @@ public final class MomotRunContext {
             this.outputDirectory = outputDirectory;
             this.paretoFrontSubscriber = paretoFrontSubscriber;
             this.stopOnFirstGoal = stopOnFirstGoal;
+            this.seed = seed;
         }
     }
 

@@ -8,6 +8,8 @@ services:
     entrypoint: /bin/bash ./entrypoint.sh
     environment:
       - LIBGL_ALWAYS_SOFTWARE=1
+      - BLOCKY_OBJECTIVES=${BLOCKY_OBJECTIVES:-GATED}
+      - BLOCKY_WRAP=${BLOCKY_WRAP:-true}
     ports:
       - "6080:6080"
     volumes:

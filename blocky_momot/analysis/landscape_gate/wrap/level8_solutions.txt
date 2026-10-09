@@ -1,0 +1,5 @@
+solutions per block count: [0, 0, 0, 0, 0, 4]
+5 W(a(FL|R))
+5 W(a(FR|L))
+5 W(l(LF|R))
+5 W(r(RF|L))

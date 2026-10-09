@@ -1,23 +1,21 @@
 package blocky_momot;
 
-import java.util.concurrent.ThreadLocalRandom;
-
 import at.ac.tuwien.big.momot.problem.unit.parameter.IParameterValue;
 import blocky.AtomicStatement;
 import blocky.AtomicStatementKind;
 import blocky.BlockyFactory;
 import blocky.BlockyPackage;
 import blocky.Statement;
+import org.moeaframework.core.PRNG;
 
 /**
  * Provides a fresh (detached) Statement instance for INOUT parameters like "stmt".
  *
- * Many low-level insertion units in the statement-edit module expect an INOUT Statement
- * which is then linked into the statement list. During random solution generation, MoMoT
- * may select these units directly; without a generator, Henshin fails with
- * "INOUT Parameter ... not set".
+ * <p>Many low-level insertion units in the statement-edit module expect an INOUT Statement which
+ * is then linked into the statement list. During random solution generation, MoMoT may select
+ * these units directly; without a generator, Henshin fails with "INOUT Parameter ... not set".
  *
- * We return a new AtomicStatement with a randomized kind (bounded to valid enum values).
+ * <p>We return a new AtomicStatement with a randomized kind (bounded to valid enum values).
  */
 public final class RandomStatementParameterValue implements IParameterValue<Statement> {
 
@@ -40,7 +38,7 @@ public final class RandomStatementParameterValue implements IParameterValue<Stat
 
 	private static AtomicStatementKind randomKind() {
 		// 0 TURN_LEFT, 1 TURN_RIGHT, 2 MOVE_FORWARD
-		int v = ThreadLocalRandom.current().nextInt(0, 3);
+		int v = PRNG.nextInt(3);
 		if (v == 0) return AtomicStatementKind.TURN_LEFT;
 		if (v == 1) return AtomicStatementKind.TURN_RIGHT;
 		return AtomicStatementKind.MOVE_FORWARD;

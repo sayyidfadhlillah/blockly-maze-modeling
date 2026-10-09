@@ -1,0 +1,13 @@
+{
+  "name": "blockly-games-web-tests",
+  "version": "1.0.0",
+  "description": "Frontend test suite for Blockly Games Maze web app using JSDOM and Node test runner",
+  "main": "common/webBridge.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

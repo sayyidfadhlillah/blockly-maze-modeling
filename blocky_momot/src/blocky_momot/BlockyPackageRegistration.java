@@ -7,11 +7,11 @@ import org.eclipse.emf.ecore.util.EcoreUtil;
 import org.eclipse.ui.IStartup;
 
 /**
- * Registers the blocky EPackage from the workspace .ecore when the workbench
- * starts, so the Henshin Text editor can resolve {@code ePackageImport blocky}
- * without requiring the blocky plugin to be activated first.
- * <p>
- * See docs/henshin/README.md and grammar-and-syntax.md.
+ * Registers the blocky EPackage from the workspace .ecore when the workbench starts, so the
+ * Henshin Text editor can resolve {@code ePackageImport blocky} without requiring the blocky plugin
+ * to be activated first.
+ *
+ * <p>See docs/henshin/README.md and grammar-and-syntax.md.
  */
 public final class BlockyPackageRegistration implements IStartup {
 
@@ -25,8 +25,8 @@ public final class BlockyPackageRegistration implements IStartup {
         }
         ResourceSet rs = new ResourceSetImpl();
         try {
-            org.eclipse.emf.ecore.resource.Resource r = rs.getResource(
-                    org.eclipse.emf.common.util.URI.createURI(BLOCKY_ECORE_URI), true);
+            org.eclipse.emf.ecore.resource.Resource r =
+                    rs.getResource(org.eclipse.emf.common.util.URI.createURI(BLOCKY_ECORE_URI), true);
             EcoreUtil.resolveAll(rs);
             if (!r.getContents().isEmpty() && r.getContents().get(0) instanceof EPackage) {
                 EPackage pkg = (EPackage) r.getContents().get(0);
@@ -42,3 +42,4 @@ public final class BlockyPackageRegistration implements IStartup {
         }
     }
 }
+

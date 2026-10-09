@@ -1,21 +1,20 @@
 package blocky_momot;
 
-import org.eclipse.emf.ecore.EObject;
-import org.eclipse.emf.henshin.interpreter.EGraph;
-
 import at.ac.tuwien.big.momot.problem.unit.parameter.IParameterValue;
 import at.ac.tuwien.big.momot.util.MomotUtil;
 import blocky.Game;
 import blocky.Level;
+import org.eclipse.emf.ecore.EObject;
+import org.eclipse.emf.henshin.interpreter.EGraph;
 
 /**
  * Supplies IN parameter values for Henshin rules from the Level in the current model:
  * allowConditionals and allowLoops from the first level of the root Game.
- * <p>
- * Uses a thread-local EGraph so that when the graph is set (e.g. during fitness evaluation
- * or by the search framework), {@link #getInitialValue()} and {@link #nextValue()} read
- * the level's attribute. If no graph is set, returns the fallback (default true) so that
- * rule application does not fail.
+ *
+ * <p>Uses a thread-local EGraph so that when the graph is set (e.g. during fitness evaluation or
+ * by the search framework), {@link #getInitialValue()} and {@link #nextValue()} read the level's
+ * attribute. If no graph is set, returns the fallback (default true) so that rule application does
+ * not fail.
  */
 public class LevelFromModelParameterValue implements IParameterValue<Boolean> {
 
@@ -74,3 +73,4 @@ public class LevelFromModelParameterValue implements IParameterValue<Boolean> {
 		return Boolean.valueOf(forAllowConditionals ? level.isAllowConditionals() : level.isAllowLoops());
 	}
 }
+

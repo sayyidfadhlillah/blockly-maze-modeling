@@ -1,0 +1,12 @@
+level,wrap,routeLength,minSolutionBlocks,threshold,passingNonSolutions,passShareOfNonSolutions,solutionsShareOfPassing,meanDistPassing,meanDistFailing,shareDist1or2Passing,shareSmallerThanSmallestSolutionPassing,meanBlocksPassing
+level10,false,10,5,0,0,0.0000,1.000000,NaN,9.266,NaN,NaN,NaN
+level10,false,10,5,1,0,0.0000,1.000000,NaN,9.266,NaN,NaN,NaN
+level10,false,10,5,2,0,0.0000,1.000000,NaN,9.266,NaN,NaN,NaN
+level10,false,10,5,3,0,0.0000,1.000000,NaN,9.266,NaN,NaN,NaN
+level10,false,10,5,4,0,0.0000,1.000000,NaN,9.266,NaN,NaN,NaN
+level10,false,10,5,5,0,0.0000,1.000000,NaN,9.266,NaN,NaN,NaN
+level10,false,10,5,6,60,0.0001,0.062500,9.867,9.266,0.0000,0.0167,4.983
+level10,false,10,5,7,320,0.0003,0.012346,9.422,9.266,0.0031,0.0219,4.978
+level10,false,10,5,8,57843,0.0570,0.000069,9.652,9.243,0.0002,0.0412,4.957
+level10,false,10,5,9,159687,0.1575,0.000025,9.323,9.255,0.0013,0.0412,4.957
+level10,false,10,5,10,1014157,1.0000,0.000004,9.266,NaN,0.0007,0.0422,4.956

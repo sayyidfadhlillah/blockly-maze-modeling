@@ -16,6 +16,15 @@ RUNS="${BLOCKY_RUNS:-30}"
 POP_SIZE="${BLOCKY_POP_SIZE:-150}"
 ITERATIONS="${BLOCKY_ITERATIONS:-100}"
 MAX_EVAL="${BLOCKY_MAX_EVAL:-$((POP_SIZE * ITERATIONS))}"
+# NSGA_II (default), MEMETIC_NSGA_II, RANDOM_SEARCH (baseline without selection) or
+# IMMIGRANTS_NSGA_II (NSGA-II + new random candidates every generation)
+ALGORITHM="${BLOCKY_ALGORITHM:-NSGA_II}"
+# Multiplies the canonical solutionLength of every level (default 1)
+SOL_LEN_FACTOR="${BLOCKY_SOL_LEN_FACTOR:-1}"
+# CURRENT (default) or GATED (Edits, Actions and Blocks only count for candidates that reach the goal)
+OBJECTIVES="${BLOCKY_OBJECTIVES:-CURRENT}"
+# true = use the *_wrap.henshin rule files (wrap/unwrap moves, see tools/henshin-prototype); default false
+WRAP="${BLOCKY_WRAP:-false}"
 
 LOG="$ROOT/blocky_momot/analysis/first_goal_benchmark_${SESSION}.log"
 CP_FILE="$ROOT/blocky_game/target/first-goal-benchmark.cp"
@@ -28,6 +37,10 @@ echo "Runs/Level:  $RUNS"
 echo "Pop Size:    $POP_SIZE"
 echo "Iterations:  $ITERATIONS"
 echo "Max Evals:   $MAX_EVAL"
+echo "Algorithm:   $ALGORITHM"
+echo "SolLen x:    $SOL_LEN_FACTOR"
+echo "Objectives:  $OBJECTIVES"
+echo "Wrap moves:  $WRAP"
 echo "Log File:    $LOG"
 echo "======================================================="
 
@@ -49,6 +62,10 @@ java \
   -Dblocky.populationSize="$POP_SIZE" \
   -Dblocky.iterations="$ITERATIONS" \
   -Dblocky.maxEvaluations="$MAX_EVAL" \
+  -Dblocky.algorithm="$ALGORITHM" \
+  -Dblocky.solutionLengthFactor="$SOL_LEN_FACTOR" \
+  -Dblocky.objectives="$OBJECTIVES" \
+  -Dblocky.rules.wrap="$WRAP" \
   blocky_game.MomotFirstGoalBenchmarkRunner \
   2>&1 | tee "$LOG"
 

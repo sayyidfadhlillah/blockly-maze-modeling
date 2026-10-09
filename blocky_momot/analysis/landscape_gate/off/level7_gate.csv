@@ -1,0 +1,14 @@
+level,wrap,routeLength,minSolutionBlocks,threshold,passingNonSolutions,passShareOfNonSolutions,solutionsShareOfPassing,meanDistPassing,meanDistFailing,shareDist1or2Passing,shareSmallerThanSmallestSolutionPassing,meanBlocksPassing
+level7,false,12,4,0,0,0.0000,1.000000,NaN,6.028,NaN,NaN,NaN
+level7,false,12,4,1,0,0.0000,1.000000,NaN,6.028,NaN,NaN,NaN
+level7,false,12,4,2,13,0.0000,0.993371,1.308,6.028,0.9231,0.0000,6.000
+level7,false,12,4,3,37,0.0000,0.981360,1.486,6.028,0.9730,0.0000,6.000
+level7,false,12,4,4,482,0.0001,0.801646,1.205,6.028,0.9896,0.0000,5.975
+level7,false,12,4,5,526,0.0001,0.787389,1.245,6.028,0.9867,0.0000,5.977
+level7,false,12,4,6,539,0.0001,0.783273,1.371,6.028,0.9666,0.0000,5.978
+level7,false,12,4,7,2010,0.0004,0.492168,1.347,6.030,0.9587,0.0000,5.961
+level7,false,12,4,8,139000,0.0301,0.013821,3.591,6.104,0.2425,0.0002,5.941
+level7,false,12,4,9,165596,0.0359,0.011627,4.080,6.100,0.2254,0.0002,5.941
+level7,false,12,4,10,283124,0.0614,0.006833,5.282,6.077,0.1379,0.0002,5.939
+level7,false,12,4,11,788998,0.1711,0.002463,5.945,6.045,0.0716,0.0002,5.938
+level7,false,12,4,12,4610521,1.0000,0.000422,6.028,NaN,0.0298,0.0002,5.937

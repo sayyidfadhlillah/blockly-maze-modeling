@@ -558,7 +558,9 @@ public class blocky {
   protected ModuleManager createModuleManager() {
     ModuleManager manager = new ModuleManager();
     for(String module : modules) {
-       manager.addModule(URI.createFileURI(new File(module).getPath().toString()).toString());
+       File f = new File(module);
+       String targetPath = f.isAbsolute() ? f.getAbsolutePath() : f.getPath();
+       manager.addModule(targetPath);
     }
     manager.removeUnits(unitsToRemove);
     manager.setParameterValue(_parameterValueKey_0, _createParameterValue_0());

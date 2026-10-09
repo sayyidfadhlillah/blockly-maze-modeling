@@ -21,7 +21,8 @@ import blocky.ConditionKind;
  * the default preprocessEvaluation calls solution.execute().
  */
 public final class EnumParamPreprocessFitnessFunction extends EGraphMultiDimensionalFitnessFunction {
-	private static final String TOP_UNIT = "CreateThenInsertContainerThenPopulate";
+	// EditAnywhere (*_edit_anywhere.henshin) also takes k/cnd.
+	private static final String[] TOP_UNITS = { "CreateThenInsertContainerThenPopulate", "EditAnywhere" };
 
 	private final RandomAtomicKindLiteralValue atomicKind = new RandomAtomicKindLiteralValue();
 	private final RandomConditionKindLiteralValue conditionKind = new RandomConditionKindLiteralValue();
@@ -81,7 +82,11 @@ public final class EnumParamPreprocessFitnessFunction extends EGraphMultiDimensi
 			String unitName = Objects.toString(callNoArg(unit, "getName"), null);
 			if (unitName == null) return;
 			// Some runtimes prefix/qualify unit names; allow suffix match.
-			if (!Objects.equals(unitName, TOP_UNIT) && !unitName.endsWith(TOP_UNIT)) return;
+			boolean handled = false;
+			for (String topUnit : TOP_UNITS) {
+				if (unitName.equals(topUnit) || unitName.endsWith(topUnit)) handled = true;
+			}
+			if (!handled) return;
 
 			// Only set if missing
 			setIfMissing(unitApp, unit, "k", atomicKind.nextValue());

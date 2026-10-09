@@ -18,6 +18,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -36,16 +38,34 @@ public final class MomotRunService {
         public final int nrRuns;
         public final int solutionLength;
         public final boolean stopOnFirstGoal;
+        public final int seed;
+        public final String sessionId;
 
         public RunSpec(String inputXmi, String outputBase) {
-            this(inputXmi, outputBase, -1, -1, -1, -1, false);
+            this(inputXmi, outputBase, -1, -1, -1, -1, false, -1, null);
         }
 
         public RunSpec(String inputXmi, String outputBase, int populationSize, int maxEvaluations, int nrRuns, int solutionLength) {
-            this(inputXmi, outputBase, populationSize, maxEvaluations, nrRuns, solutionLength, false);
+            this(inputXmi, outputBase, populationSize, maxEvaluations, nrRuns, solutionLength, false, -1, null);
+        }
+
+        public RunSpec(String inputXmi, String outputBase, int populationSize, int maxEvaluations, int nrRuns, int solutionLength, int seed) {
+            this(inputXmi, outputBase, populationSize, maxEvaluations, nrRuns, solutionLength, false, seed, null);
+        }
+
+        public RunSpec(String inputXmi, String outputBase, int populationSize, int maxEvaluations, int nrRuns, int solutionLength, int seed, String sessionId) {
+            this(inputXmi, outputBase, populationSize, maxEvaluations, nrRuns, solutionLength, false, seed, sessionId);
         }
 
         public RunSpec(String inputXmi, String outputBase, int populationSize, int maxEvaluations, int nrRuns, int solutionLength, boolean stopOnFirstGoal) {
+            this(inputXmi, outputBase, populationSize, maxEvaluations, nrRuns, solutionLength, stopOnFirstGoal, -1, null);
+        }
+
+        public RunSpec(String inputXmi, String outputBase, int populationSize, int maxEvaluations, int nrRuns, int solutionLength, boolean stopOnFirstGoal, int seed) {
+            this(inputXmi, outputBase, populationSize, maxEvaluations, nrRuns, solutionLength, stopOnFirstGoal, seed, null);
+        }
+
+        public RunSpec(String inputXmi, String outputBase, int populationSize, int maxEvaluations, int nrRuns, int solutionLength, boolean stopOnFirstGoal, int seed, String sessionId) {
             this.inputXmi = Objects.requireNonNull(inputXmi);
             this.outputBase = Objects.requireNonNull(outputBase);
             this.populationSize = populationSize;
@@ -53,6 +73,8 @@ public final class MomotRunService {
             this.nrRuns = nrRuns;
             this.solutionLength = solutionLength;
             this.stopOnFirstGoal = stopOnFirstGoal;
+            this.seed = seed;
+            this.sessionId = sessionId;
         }
     }
 
@@ -76,16 +98,41 @@ public final class MomotRunService {
         return new RunSpec(input, out);
     }
 
+    private static final java.util.Set<Thread> ACTIVE_SEARCH_THREADS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final java.util.concurrent.ConcurrentHashMap<String, Thread> ACTIVE_SESSION_THREADS = new java.util.concurrent.ConcurrentHashMap<>();
     private static volatile Thread currentMomotThread;
     private static final Object RUNNER_CLASS_LOCK = new Object();
-    /** Henshin/EMF matching is not thread-safe; serialize all MoMoT runs. */
+    /** Henshin/EMF matching serialization lock reserved for synchronous benchmark runners. */
     private static final Object MOMOT_EXECUTION_LOCK = new Object();
+    private static final Semaphore SEARCH_SEMAPHORE = new Semaphore(10, true);
+    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
+
+    private static final Object STREAM_INSTALL_LOCK = new Object();
+    private static volatile boolean streamsInstalled = false;
+
     private static volatile Class<?> cachedRunnerClass;
     private static volatile ClassLoader cachedRunnerClassLoader;
+
+    /** Ensure process-wide stdout/stderr mirrors and thread-local PRNG are installed once. */
+    public static void ensureSystemStreamsInstalled() {
+        blocky_momot.ThreadLocalRandomProxy.install();
+        if (!streamsInstalled) {
+            synchronized (STREAM_INSTALL_LOCK) {
+                if (!streamsInstalled) {
+                    PrintStream origOut = System.out;
+                    PrintStream origErr = System.err;
+                    System.setOut(new PrintStream(new ThreadMirroringOutputStream(origOut, false), true, StandardCharsets.UTF_8));
+                    System.setErr(new PrintStream(new ThreadMirroringOutputStream(origErr, true), true, StandardCharsets.UTF_8));
+                    streamsInstalled = true;
+                }
+            }
+        }
+    }
 
     /** Pre-load the MoMoT runner class (required before parallel benchmark runs). */
     public static void warmupRunnerClass() {
         try {
+            ensureSystemStreamsInstalled();
             ensureBlockyInputForClassInit();
             resolveRunnerClass(MomotRunService.class.getClassLoader());
         } catch (ClassNotFoundException e) {
@@ -98,35 +145,117 @@ public final class MomotRunService {
     }
 
     public static String runSync(RunSpec spec, Consumer<String> logLine, Consumer<String> onOutputDirReady, Object subscriber) {
-        return runInternal(spec, logLine, onOutputDirReady, subscriber);
-    }
-
-    public static void stopCurrentRun() {
-        Thread t = currentMomotThread;
-        if (t != null && t.isAlive()) {
-            t.interrupt();
+        synchronized (MOMOT_EXECUTION_LOCK) {
+            return runInternal(spec, logLine, onOutputDirReady, subscriber);
         }
     }
 
-    public static void runAsync(RunSpec spec, Consumer<String> logLine, Runnable onDone, Consumer<String> onOutputDirReady) {
-        runAsync(spec, logLine, onDone, onOutputDirReady, null);
+    public static void stopCurrentRun() {
+        stopMomotSearch("desktop");
+        Thread t = currentMomotThread;
+        if (t != null && t.isAlive()) {
+            stopRun(t);
+        }
     }
 
-    public static void runAsync(RunSpec spec, Consumer<String> logLine, Runnable onDone, Consumer<String> onOutputDirReady, Object subscriber) {
-        stopCurrentRun();
-        Thread t = new Thread(() -> {
-            try {
-                runInternal(spec, logLine, onOutputDirReady, subscriber);
-            } catch (Throwable t2) {
-                if (logLine != null) logLine.accept("[MoMoT] Failed:\n" + throwableToString(t2));
-            } finally {
-                currentMomotThread = null;
-                if (onDone != null) Platform.runLater(onDone);
+    public static void stopMomotSearch(String sessionId) {
+        if (sessionId == null) return;
+        Thread t = ACTIVE_SESSION_THREADS.get(sessionId);
+        if (t != null && t.isAlive()) {
+            stopRun(t);
+        }
+    }
+
+    public static void stopAllSearches() {
+        for (Thread t : ACTIVE_SEARCH_THREADS) {
+            if (t != null && t.isAlive()) {
+                try {
+                    t.interrupt();
+                } catch (Exception ignored) {}
             }
-        }, "MomotRunService");
-        currentMomotThread = t;
+        }
+    }
+
+    public static void stopRun(Thread thread) {
+        if (thread != null && thread.isAlive()) {
+            try {
+                thread.interrupt();
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public static Thread runAsync(RunSpec spec, Consumer<String> logLine, Runnable onDone, Consumer<String> onOutputDirReady) {
+        return runAsync(spec, logLine, null, onDone, onOutputDirReady, null);
+    }
+
+    public static Thread runAsync(RunSpec spec, Consumer<String> logLine, Runnable onDone, Consumer<String> onOutputDirReady, Object subscriber) {
+        return runAsync(spec, logLine, null, onDone, onOutputDirReady, subscriber);
+    }
+
+    public static Thread runAsync(RunSpec spec, Consumer<String> logLine, Consumer<String> onStatusChange, Runnable onDone, Consumer<String> onOutputDirReady) {
+        return runAsync(spec, logLine, onStatusChange, onDone, onOutputDirReady, null);
+    }
+
+    public static Thread runAsync(RunSpec spec, Consumer<String> logLine, Consumer<String> onStatusChange, Runnable onDone, Consumer<String> onOutputDirReady, Object subscriber) {
+        ensureSystemStreamsInstalled();
+        final String sid = spec.sessionId;
+        Thread t = new Thread(() -> {
+            boolean acquired = false;
+            try {
+                ACTIVE_SEARCH_THREADS.add(Thread.currentThread());
+                if (sid != null) {
+                    ACTIVE_SESSION_THREADS.put(sid, Thread.currentThread());
+                }
+                if ("desktop".equals(sid)) {
+                    currentMomotThread = Thread.currentThread();
+                }
+                if (onStatusChange != null) {
+                    onStatusChange.accept("Waiting");
+                }
+                SEARCH_SEMAPHORE.acquire();
+                acquired = true;
+                if (onStatusChange != null) {
+                    onStatusChange.accept("Running");
+                }
+                runInternal(spec, logLine, onOutputDirReady, subscriber);
+            } catch (InterruptedException e) {
+                if (logLine != null) {
+                    logLine.accept("[MoMoT] Search interrupted/cancelled.");
+                }
+            } catch (Throwable t2) {
+                if (logLine != null) {
+                    logLine.accept("[MoMoT] Failed:\n" + throwableToString(t2));
+                }
+            } finally {
+                ACTIVE_SEARCH_THREADS.remove(Thread.currentThread());
+                if (sid != null) {
+                    ACTIVE_SESSION_THREADS.remove(sid, Thread.currentThread());
+                }
+                if ("desktop".equals(sid) && currentMomotThread == Thread.currentThread()) {
+                    currentMomotThread = null;
+                }
+                if (acquired) {
+                    SEARCH_SEMAPHORE.release();
+                }
+                if (onDone != null) {
+                    try {
+                        Platform.runLater(onDone);
+                    } catch (Throwable ignored) {
+                        onDone.run();
+                    }
+                }
+            }
+        }, "MomotRunService-" + THREAD_COUNTER.incrementAndGet());
+        ACTIVE_SEARCH_THREADS.add(t);
+        if (sid != null) {
+            ACTIVE_SESSION_THREADS.put(sid, t);
+        }
+        if (sid == null || "desktop".equals(sid)) {
+            currentMomotThread = t;
+        }
         t.setDaemon(true);
         t.start();
+        return t;
     }
 
     private static void findJars(File dir, List<URL> urls) {
@@ -142,24 +271,18 @@ public final class MomotRunService {
     }
 
     private static String runInternal(RunSpec spec, Consumer<String> logLine, Consumer<String> onOutputDirReady, Object subscriber) {
-        synchronized (MOMOT_EXECUTION_LOCK) {
-            return runInternalLocked(spec, logLine, onOutputDirReady, subscriber);
+        ensureSystemStreamsInstalled();
+        ThreadMirroringOutputStream.setThreadListener(logLine, s -> { if (logLine != null) logLine.accept("[stderr] " + s); });
+        blocky_momot.ThreadLocalRandomProxy.install();
+        if (spec.seed > 0) {
+            blocky_momot.ThreadLocalRandomProxy.setThreadSeed(spec.seed);
         }
-    }
 
-    private static String runInternalLocked(RunSpec spec, Consumer<String> logLine, Consumer<String> onOutputDirReady, Object subscriber) {
         if (logLine != null) logLine.accept("[MoMoT] Starting search logic...");
 
         File currentDir = new File(System.getProperty("user.dir"));
         Path outputDir = resolveOutputPath(currentDir, spec.outputBase);
         boolean isolatedOutput = spec.populationSize > 0 || spec.maxEvaluations > 0 || spec.nrRuns > 0 || spec.solutionLength > 0;
-
-        try {
-            File input = resolveExistingFile(spec.inputXmi);
-            if (input.exists() && input.isFile()) {
-                System.setProperty("blocky.input", input.getAbsolutePath());
-            }
-        } catch (Exception e) {}
 
         if (isolatedOutput) {
             deleteDirectoryRecursive(outputDir);
@@ -207,13 +330,6 @@ public final class MomotRunService {
 
         ClassLoader originalTCCL = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(finalCl);
-
-        PrintStream oldOut = System.out, oldErr = System.err;
-        MirroringOutputStream mirrorOut = new MirroringOutputStream(logLine, oldOut);
-        MirroringOutputStream mirrorErr = new MirroringOutputStream(s -> { if (logLine != null) logLine.accept("[stderr] " + s); }, oldErr);
-        
-        System.setOut(new PrintStream(mirrorOut, true, StandardCharsets.UTF_8));
-        System.setErr(new PrintStream(mirrorErr, true, StandardCharsets.UTF_8));
         
         try {
             String absInput = resolveExistingFile(spec.inputXmi).getAbsolutePath();
@@ -246,6 +362,7 @@ public final class MomotRunService {
                 } catch (Throwable ignored) {}
             }
 
+            installThreadBaseline(absInput, finalCl);
             installRunContext(spec, outputDir, solLen, finalCl, subscriber);
 
             try {
@@ -284,9 +401,10 @@ public final class MomotRunService {
             System.out.flush();
             System.err.flush();
             Thread.currentThread().setContextClassLoader(originalTCCL);
-            System.setOut(oldOut); 
-            System.setErr(oldErr);
+            clearThreadBaseline(finalCl);
             clearRunContext(finalCl);
+            blocky_momot.ThreadLocalRandomProxy.clearThreadRandom();
+            ThreadMirroringOutputStream.clearThreadListener();
         }
 
         return finalizeOutput(spec, onOutputDirReady, outputDir, isolatedOutput);
@@ -345,11 +463,16 @@ public final class MomotRunService {
 
             Object cfg;
             try {
-                cfg = cfgClass.getConstructor(int.class, int.class, int.class, int.class, Path.class, subClass, boolean.class)
-                        .newInstance(spec.populationSize, spec.maxEvaluations, spec.nrRuns, solutionLength, outputDir, safeSubscriber, spec.stopOnFirstGoal);
+                cfg = cfgClass.getConstructor(int.class, int.class, int.class, int.class, Path.class, subClass, boolean.class, int.class)
+                        .newInstance(spec.populationSize, spec.maxEvaluations, spec.nrRuns, solutionLength, outputDir, safeSubscriber, spec.stopOnFirstGoal, spec.seed);
             } catch (NoSuchMethodException e) {
-                cfg = cfgClass.getConstructor(int.class, int.class, int.class, int.class, Path.class, subClass)
-                        .newInstance(spec.populationSize, spec.maxEvaluations, spec.nrRuns, solutionLength, outputDir, safeSubscriber);
+                try {
+                    cfg = cfgClass.getConstructor(int.class, int.class, int.class, int.class, Path.class, subClass, boolean.class)
+                            .newInstance(spec.populationSize, spec.maxEvaluations, spec.nrRuns, solutionLength, outputDir, safeSubscriber, spec.stopOnFirstGoal);
+                } catch (NoSuchMethodException e2) {
+                    cfg = cfgClass.getConstructor(int.class, int.class, int.class, int.class, Path.class, subClass)
+                            .newInstance(spec.populationSize, spec.maxEvaluations, spec.nrRuns, solutionLength, outputDir, safeSubscriber);
+                }
             }
             ctxClass.getMethod("set", cfgClass).invoke(null, cfg);
         } catch (Throwable t) {
@@ -373,6 +496,29 @@ public final class MomotRunService {
         return target;
     }
 
+    private static void installThreadBaseline(String inputXmiPath, ClassLoader cl) {
+        try {
+            String absInput = resolveExistingFile(inputXmiPath).getAbsolutePath();
+            try {
+                Class<?> distClass = Class.forName("blocky_momot.BlockyProgramDistance", true, cl);
+                distClass.getMethod("setThreadBaseline", String.class).invoke(null, absInput);
+            } catch (Throwable t) {
+                blocky_momot.BlockyProgramDistance.setThreadBaseline(absInput);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private static void clearThreadBaseline(ClassLoader cl) {
+        try {
+            try {
+                Class<?> distClass = Class.forName("blocky_momot.BlockyProgramDistance", true, cl);
+                distClass.getMethod("clearThreadBaseline").invoke(null);
+            } catch (Throwable t) {
+                blocky_momot.BlockyProgramDistance.clearThreadBaseline();
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private static void ensureBlockyInputForClassInit() {
         try {
             String current = System.getProperty("blocky.input");
@@ -380,20 +526,46 @@ public final class MomotRunService {
                 File existing = resolveExistingFile(current);
                 if (existing.exists() && existing.isFile()) {
                     System.setProperty("blocky.input", existing.getAbsolutePath());
-                    return;
+                }
+            } else {
+                String fallback = firstExisting(
+                        "blocky_momot/model/input/1.xmi",
+                        "../blocky_momot/model/input/1.xmi",
+                        "blocky_game/direct_manipulation_request.xmi",
+                        "../blocky_game/direct_manipulation_request.xmi",
+                        "direct_manipulation_request.xmi",
+                        "model/input/1.xmi",
+                        "model/1.xmi",
+                        "model/input/game.xmi"
+                );
+                System.setProperty("blocky.input", resolveExistingFile(fallback).getAbsolutePath());
+            }
+
+            String currentHenshin = System.getProperty("blocky.henshin");
+            if (currentHenshin != null && !currentHenshin.isBlank()) {
+                if (Boolean.getBoolean("blocky.rules.wrap") && !currentHenshin.contains("_wrap")) {
+                    String wrapped = MomotFirstGoalBenchmarkRunner.withWrapMoves(currentHenshin);
+                    File wrappedFile = resolveExistingFile(wrapped);
+                    if (wrappedFile.exists() && wrappedFile.isFile()) {
+                        currentHenshin = wrappedFile.getAbsolutePath();
+                    }
+                }
+                File existingHenshin = resolveExistingFile(currentHenshin);
+                if (existingHenshin.exists() && existingHenshin.isFile()) {
+                    System.setProperty("blocky.henshin", existingHenshin.getAbsolutePath());
+                }
+            } else {
+                String defaultModule = MomotFirstGoalBenchmarkRunner.defaultHenshinModule();
+                String fallbackHenshin = firstExisting(
+                        "blocky_model/transformations/" + defaultModule,
+                        "../blocky_model/transformations/" + defaultModule,
+                        defaultModule
+                );
+                File resolvedHenshin = resolveExistingFile(fallbackHenshin);
+                if (resolvedHenshin.exists()) {
+                    System.setProperty("blocky.henshin", resolvedHenshin.getAbsolutePath());
                 }
             }
-            String fallback = firstExisting(
-                    "blocky_momot/model/input/1.xmi",
-                    "../blocky_momot/model/input/1.xmi",
-                    "blocky_game/direct_manipulation_request.xmi",
-                    "../blocky_game/direct_manipulation_request.xmi",
-                    "direct_manipulation_request.xmi",
-                    "model/input/1.xmi",
-                    "model/1.xmi",
-                    "model/input/game.xmi"
-            );
-            System.setProperty("blocky.input", resolveExistingFile(fallback).getAbsolutePath());
         } catch (Exception ignored) {}
     }
 
@@ -492,7 +664,7 @@ public final class MomotRunService {
         } catch (Throwable ignored) {}
     }
 
-    private static File resolveExistingFile(String path) {
+    public static File resolveExistingFile(String path) {
         if (path == null || path.isBlank()) return new File("model/1.xmi");
         File f = new File(path);
         if (f.isAbsolute() && f.exists()) return f;
@@ -509,11 +681,29 @@ public final class MomotRunService {
         if (f5.exists()) return f5;
         File f6 = new File("/app", path);
         if (f6.exists()) return f6;
+        File f7 = new File("/app/blocky_game", path);
+        if (f7.exists()) return f7;
+        File f8 = new File("/app/blocky_momot", path);
+        if (f8.exists()) return f8;
+        File f9 = new File("/app/blocky_model", path);
+        if (f9.exists()) return f9;
+        if (path.startsWith("../")) {
+            String stripped = path.substring(3);
+            File s1 = new File(stripped);
+            if (s1.exists()) return s1;
+            File s2 = new File("/app", stripped);
+            if (s2.exists()) return s2;
+        }
         return f;
     }
 
-    private static String firstExisting(String... paths) {
-        for (String p : paths) if (p != null && new File(p).exists()) return p;
+    public static String firstExisting(String... paths) {
+        for (String p : paths) {
+            if (p != null) {
+                File f = resolveExistingFile(p);
+                if (f.exists()) return p;
+            }
+        }
         return paths[0];
     }
 
@@ -538,46 +728,102 @@ public final class MomotRunService {
         return sw.toString();
     }
 
-    private static class MirroringOutputStream extends OutputStream {
+    private static class ThreadMirroringOutputStream extends OutputStream {
+        private static final ThreadLocal<Consumer<String>> THREAD_OUT_LISTENER = new ThreadLocal<>();
+        private static final ThreadLocal<Consumer<String>> THREAD_ERR_LISTENER = new ThreadLocal<>();
+        private static final ThreadLocal<StringBuilder> THREAD_OUT_BUF = ThreadLocal.withInitial(StringBuilder::new);
+        private static final ThreadLocal<StringBuilder> THREAD_ERR_BUF = ThreadLocal.withInitial(StringBuilder::new);
         private static final ThreadLocal<Boolean> IN_CALLBACK = ThreadLocal.withInitial(() -> false);
-        private final Consumer<String> logLine;
-        private final PrintStream fallback;
-        private final StringBuilder lineBuf = new StringBuilder();
 
-        public MirroringOutputStream(Consumer<String> l, PrintStream f) {
-            this.logLine = l;
-            this.fallback = f;
+        private final PrintStream fallback;
+        private final boolean isErr;
+
+        public ThreadMirroringOutputStream(PrintStream fallback, boolean isErr) {
+            this.fallback = fallback;
+            this.isErr = isErr;
+        }
+
+        public static void setThreadListener(Consumer<String> outListener, Consumer<String> errListener) {
+            THREAD_OUT_LISTENER.set(outListener);
+            THREAD_ERR_LISTENER.set(errListener);
+        }
+
+        public static void clearThreadListener() {
+            flushThreadBuffer(false);
+            flushThreadBuffer(true);
+            THREAD_OUT_LISTENER.remove();
+            THREAD_ERR_LISTENER.remove();
+            THREAD_OUT_BUF.remove();
+            THREAD_ERR_BUF.remove();
+            IN_CALLBACK.remove();
+        }
+
+        private static void flushThreadBuffer(boolean isErr) {
+            Consumer<String> listener = isErr ? THREAD_ERR_LISTENER.get() : THREAD_OUT_LISTENER.get();
+            StringBuilder buf = isErr ? THREAD_ERR_BUF.get() : THREAD_OUT_BUF.get();
+            if (listener != null && buf != null && buf.length() > 0 && !IN_CALLBACK.get()) {
+                String s = buf.toString();
+                buf.setLength(0);
+                IN_CALLBACK.set(true);
+                try {
+                    listener.accept(s);
+                } finally {
+                    IN_CALLBACK.set(false);
+                }
+            }
         }
 
         @Override
         public void write(int b) throws java.io.IOException {
             if (fallback != null) fallback.write(b);
+            Consumer<String> listener = isErr ? THREAD_ERR_LISTENER.get() : THREAD_OUT_LISTENER.get();
+            if (listener == null) return;
+            StringBuilder buf = isErr ? THREAD_ERR_BUF.get() : THREAD_OUT_BUF.get();
             if (b == '\n') {
-                String s = lineBuf.toString();
-                lineBuf.setLength(0);
-                if (IN_CALLBACK.get()) return;
-                IN_CALLBACK.set(true);
-                try { if (logLine != null) logLine.accept(s); } finally { IN_CALLBACK.set(false); }
+                String s = buf.toString();
+                buf.setLength(0);
+                if (!IN_CALLBACK.get()) {
+                    IN_CALLBACK.set(true);
+                    try {
+                        listener.accept(s);
+                    } finally {
+                        IN_CALLBACK.set(false);
+                    }
+                }
             } else if (b != '\r') {
-                lineBuf.append((char) b);
+                buf.append((char) b);
             }
         }
-        
-        @Override public void write(byte[] b, int off, int len) throws java.io.IOException {
+
+        @Override
+        public void write(byte[] b, int off, int len) throws java.io.IOException {
             if (fallback != null) fallback.write(b, off, len);
+            Consumer<String> listener = isErr ? THREAD_ERR_LISTENER.get() : THREAD_OUT_LISTENER.get();
+            if (listener == null) return;
+            StringBuilder buf = isErr ? THREAD_ERR_BUF.get() : THREAD_OUT_BUF.get();
             for (int i = 0; i < len; i++) {
                 byte curr = b[off + i];
                 if (curr == '\n') {
-                    String s = lineBuf.toString();
-                    lineBuf.setLength(0);
+                    String s = buf.toString();
+                    buf.setLength(0);
                     if (!IN_CALLBACK.get()) {
                         IN_CALLBACK.set(true);
-                        try { if (logLine != null) logLine.accept(s); } finally { IN_CALLBACK.set(false); }
+                        try {
+                            listener.accept(s);
+                        } finally {
+                            IN_CALLBACK.set(false);
+                        }
                     }
                 } else if (curr != '\r') {
-                    lineBuf.append((char) curr);
+                    buf.append((char) curr);
                 }
             }
+        }
+
+        @Override
+        public void flush() throws java.io.IOException {
+            if (fallback != null) fallback.flush();
+            flushThreadBuffer(isErr);
         }
     }
 }

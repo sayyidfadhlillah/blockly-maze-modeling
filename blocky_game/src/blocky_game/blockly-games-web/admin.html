@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blockly Maze - Admin Dashboard</title>
+  <link rel="stylesheet" href="common/common.css">
+  <script src="common/blockPreview.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f6f8fa;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: #24292f;
+      min-height: 100vh;
+    }
+    .admin-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    
+    /* Login Box */
+    #loginSection {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
+    }
+    .login-card {
+      background: #ffffff;
+      padding: 32px 36px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      border: 1px solid #d0d7de;
+      width: 380px;
+      max-width: 90vw;
+      text-align: center;
+    }
+    .login-card h2 {
+      margin-top: 0;
+      color: #0969da;
+      font-size: 22px;
+    }
+    .login-card p {
+      color: #57606a;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .login-card input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 15px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      outline: none;
+    }
+    .login-card input:focus {
+      border-color: #0969da;
+      box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.2);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s ease;
+    }
+    .btn-primary {
+      background: #2da44e;
+      color: #ffffff;
+      border-color: rgba(27,31,36,0.15);
+      width: 100%;
+    }
+    .btn-primary:hover { background: #2c974b; }
+    .btn-secondary {
+      background: #f6f8fa;
+      color: #24292f;
+      border-color: #d0d7de;
+    }
+    .btn-secondary:hover { background: #eef1f4; }
+    .btn-danger {
+      background: #cf222e;
+      color: #ffffff;
+    }
+    .btn-danger:hover { background: #a40e26; }
+    .error-msg {
+      color: #cf222e;
+      font-size: 13px;
+      margin-top: 10px;
+      display: none;
+    }
+
+    /* Dashboard Header */
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+      padding: 18px 24px;
+      border-radius: 10px;
+      border: 1px solid #d0d7de;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header-title h1 {
+      margin: 0;
+      font-size: 22px;
+      color: #0969da;
+    }
+    .header-title span {
+      font-size: 13px;
+      color: #57606a;
+    }
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: #ffffff;
+      padding: 16px 20px;
+      border-radius: 10px;
+      border: 1px solid #d0d7de;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .stat-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #57606a;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #24292f;
+    }
+
+    /* Controls Bar */
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .search-input {
+      flex: 1;
+      min-width: 260px;
+      padding: 8px 14px;
+      font-size: 14px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      outline: none;
+      background: #ffffff;
+    }
+    .search-input:focus {
+      border-color: #0969da;
+      box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.2);
+    }
+    .export-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Table */
+    .table-container {
+      background: #ffffff;
+      border-radius: 10px;
+      border: 1px solid #d0d7de;
+      overflow-x: auto;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #e1e4e8;
+    }
+    th {
+      background: #f6f8fa;
+      font-weight: 600;
+      color: #24292f;
+      border-bottom: 2px solid #d0d7de;
+      white-space: nowrap;
+    }
+    tr:hover { background: #fafbfc; }
+    .session-badge {
+      font-family: monospace;
+      font-weight: 600;
+      background: #ddf4ff;
+      color: #0969da;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .user-badge {
+      font-weight: 600;
+      color: #24292f;
+    }
+    .duration-cell {
+      font-weight: 700;
+      color: #1a7f37;
+    }
+    .level-pills {
+      display: flex;
+      gap: 3px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #e1e4e8;
+      color: #57606a;
+    }
+    .pill.active {
+      background: #dafbe1;
+      color: #1a7f37;
+      border: 1px solid #2da44e40;
+    }
+    .actions-cell {
+      white-space: nowrap;
+    }
+    .actions-cell button {
+      margin-right: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 99999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-card {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.3);
+      width: 720px;
+      max-width: 94vw;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-card h3 {
+      margin: 0 0 12px 0;
+      font-size: 18px;
+      color: #0969da;
+    }
+    .modal-card table {
+      margin: 16px 0;
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .event-card {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .event-meta {
+      font-size: 12px;
+      color: #57606a;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .badge-run {
+      background: #ddf4ff;
+      color: #0969da;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .badge-cand {
+      background: #dafbe1;
+      color: #1a7f37;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .xml-details summary {
+      cursor: pointer;
+      font-size: 11px;
+      color: #57606a;
+      margin-top: 6px;
+    }
+    .xml-details pre {
+      font-size: 11px;
+      background: #ffffff;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #d0d7de;
+      max-height: 120px;
+      overflow: auto;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Login Section -->
+  <div id="loginSection">
+    <div class="login-card">
+      <h2>Admin Authentication</h2>
+      <p>Enter the admin password to access session analytics:</p>
+      <input type="password" id="adminPasswordInput" placeholder="Password" autofocus />
+      <button type="button" class="btn btn-primary" id="loginBtn">Login to Admin</button>
+      <div id="loginError" class="error-msg">Invalid password. Please try again.</div>
+    </div>
+  </div>
+
+  <!-- Dashboard Section -->
+  <div id="dashboardSection" class="admin-container" style="display: none;">
+    <div class="dashboard-header">
+      <div class="header-title">
+        <h1>Blockly Maze Admin Console</h1>
+        <span>User Sessions & Level Time Tracking Analytics</span>
+      </div>
+      <div class="header-actions">
+        <a href="maze.html" class="btn btn-secondary" target="_blank">Open Maze (MOMoT)</a>
+        <a href="maze-original.html" class="btn btn-secondary" target="_blank">Open Maze (Original)</a>
+        <button type="button" class="btn btn-secondary" id="logoutBtn">Logout</button>
+      </div>
+    </div>
+
+    <!-- Stats Overview -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Sessions</div>
+        <div class="stat-value" id="statTotalSessions">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Unique Users</div>
+        <div class="stat-value" id="statUniqueUsers">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Playtime</div>
+        <div class="stat-value" id="statTotalPlaytime">00:00</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Session Duration</div>
+        <div class="stat-value" id="statAvgDuration">00:00</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Program Runs</div>
+        <div class="stat-value" id="statTotalRuns">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">MoMoT Searches</div>
+        <div class="stat-value" id="statTotalSearches">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Solutions Loaded</div>
+        <div class="stat-value" id="statTotalLoaded">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Direct Manipulations</div>
+        <div class="stat-value" id="statTotalDMs">0</div>
+      </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+      <input type="text" class="search-input" id="searchInput" placeholder="Search by Session ID or User ID..." />
+      <div class="export-buttons">
+        <button type="button" class="btn btn-secondary" id="btnExportHtml">Download All as HTML</button>
+        <button type="button" class="btn btn-secondary" id="btnExportJson">Download All as JSON</button>
+        <button type="button" class="btn btn-secondary" id="btnRefresh">Refresh</button>
+      </div>
+    </div>
+
+    <!-- Sessions Table -->
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Session ID</th>
+            <th>User ID</th>
+            <th>Started At</th>
+            <th>Completed</th>
+            <th>Runs</th>
+            <th>Searches</th>
+            <th>Loaded</th>
+            <th>DM</th>
+            <th>Levels (1-10)</th>
+            <th>Total Time</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sessionsTableBody">
+          <tr><td colspan="11" style="text-align:center; padding: 24px;">Loading sessions...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div class="modal-backdrop" id="detailModal">
+    <div class="modal-card">
+      <h3 id="modalSessionTitle">Session Details</h3>
+      <div id="modalSessionMeta" style="font-size: 13px; color: #57606a;"></div>
+      <table id="modalLevelsTable">
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th>Elapsed Time</th>
+            <th>Runs</th>
+            <th>Searches</th>
+            <th>Loaded</th>
+            <th>DM</th>
+            <th>Variant</th>
+            <th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody id="modalLevelsBody"></tbody>
+      </table>
+      <div id="modalEventsContainer" style="margin-top: 20px;">
+        <h4 style="margin: 0 0 10px 0; color: #0969da; font-size: 15px;">Event Timeline & Workspace Snapshots</h4>
+        <div id="modalEventsList" style="max-height: 360px; overflow-y: auto; padding-right: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="modalDownloadHtml">Download HTML</button>
+        <button type="button" class="btn btn-secondary" id="modalDownloadJson">Download JSON</button>
+        <button type="button" class="btn btn-secondary" id="modalCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var adminToken = sessionStorage.getItem('blocky_admin_token');
+      var allSessions = [];
+      var selectedSession = null;
+      var previewScriptCached = '';
+      fetch('common/blockPreview.js').then(function(r) {
+        if (r.ok) return r.text();
+        return '';
+      }).then(function(txt) {
+        previewScriptCached = txt;
+      }).catch(function() {});
+
+      function formatTime(ms) {
+        if (!ms || ms <= 0) return '-';
+        var totalSec = Math.floor(ms / 1000);
+        var hrs = Math.floor(totalSec / 3600);
+        var mins = Math.floor((totalSec % 3600) / 60);
+        var secs = totalSec % 60;
+        var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+        if (hrs > 0) return pad(hrs) + ':' + pad(mins) + ':' + pad(secs);
+        return pad(mins) + ':' + pad(secs);
+      }
+
+      function showDashboard() {
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('dashboardSection').style.display = 'block';
+        fetchSessions();
+      }
+
+      function showLogin() {
+        sessionStorage.removeItem('blocky_admin_token');
+        adminToken = null;
+        document.getElementById('loginSection').style.display = 'flex';
+        document.getElementById('dashboardSection').style.display = 'none';
+      }
+
+      function attemptLogin() {
+        var pwd = document.getElementById('adminPasswordInput').value;
+        var errEl = document.getElementById('loginError');
+        errEl.style.display = 'none';
+
+        fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd })
+        }).then(function(res) {
+          if (!res.ok) throw new Error('Invalid credentials');
+          return res.json();
+        }).then(function(data) {
+          if (data && data.token) {
+            adminToken = data.token;
+            sessionStorage.setItem('blocky_admin_token', adminToken);
+            showDashboard();
+          } else {
+            errEl.style.display = 'block';
+          }
+        }).catch(function(err) {
+          errEl.style.display = 'block';
+        });
+      }
+
+      function fetchSessions() {
+        if (!adminToken) { showLogin(); return; }
+        fetch('/api/admin/sessions', {
+          headers: { 'Authorization': 'Bearer ' + adminToken }
+        }).then(function(res) {
+          if (res.status === 401) { showLogin(); throw new Error('Unauthorized'); }
+          return res.json();
+        }).then(function(data) {
+          allSessions = data.sessions || [];
+          renderDashboard();
+        }).catch(function(err) {
+          console.error('Fetch sessions failed:', err);
+        });
+      }
+
+      function renderDashboard() {
+        var query = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+        var filtered = allSessions.filter(function(s) {
+          if (!query) return true;
+          return (s.sessionId && s.sessionId.toLowerCase().indexOf(query) !== -1) ||
+                 (s.userId && s.userId.toLowerCase().indexOf(query) !== -1);
+        });
+
+        // Compute Stats
+        var totalSessions = allSessions.length;
+        var usersSet = {};
+        var grandTotalMs = 0;
+        var grandRuns = 0;
+        var grandSearches = 0;
+        var grandLoaded = 0;
+        var grandDMs = 0;
+        allSessions.forEach(function(s) {
+          usersSet[s.userId] = true;
+          grandTotalMs += (s.totalElapsedMs || 0);
+          grandRuns += (s.totalProgramRuns || 0);
+          grandSearches += (s.totalMomotSearches || 0);
+          grandLoaded += (s.totalSolutionsLoaded || 0);
+          grandDMs += (s.totalDirectManipulations || 0);
+        });
+        var uniqueUsers = Object.keys(usersSet).length;
+        var avgDurationMs = totalSessions > 0 ? Math.round(grandTotalMs / totalSessions) : 0;
+
+        document.getElementById('statTotalSessions').textContent = totalSessions;
+        document.getElementById('statUniqueUsers').textContent = uniqueUsers;
+        document.getElementById('statTotalPlaytime').textContent = formatTime(grandTotalMs);
+        document.getElementById('statAvgDuration').textContent = formatTime(avgDurationMs);
+        document.getElementById('statTotalRuns').textContent = grandRuns;
+        document.getElementById('statTotalSearches').textContent = grandSearches;
+        document.getElementById('statTotalLoaded').textContent = grandLoaded;
+        document.getElementById('statTotalDMs').textContent = grandDMs;
+
+        // Render Table Body
+        var tbody = document.getElementById('sessionsTableBody');
+        if (filtered.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding: 24px; color:#57606a;">No matching sessions found.</td></tr>';
+          return;
+        }
+
+        var html = '';
+        filtered.forEach(function(s, idx) {
+          var pills = '';
+          for (var l = 1; l <= 10; l++) {
+            var rec = s.levels && s.levels[l];
+            var isDone = rec && rec.elapsedMs > 0;
+            pills += '<span class="pill ' + (isDone ? 'active' : '') + '" title="Level ' + l + ': ' + (isDone ? formatTime(rec.elapsedMs) : 'not played') + '">L' + l + '</span>';
+          }
+
+          html += [
+            '<tr>',
+            '  <td><span class="session-badge">' + escapeHtml(s.sessionId) + '</span></td>',
+            '  <td><span class="user-badge">' + escapeHtml(s.userId) + '</span></td>',
+            '  <td>' + (s.startedAt ? s.startedAt.replace('T', ' ').substring(0, 19) : '-') + '</td>',
+            '  <td>' + (s.completedLevels || 0) + ' / 10</td>',
+            '  <td><strong>' + (s.totalProgramRuns || 0) + '</strong></td>',
+            '  <td><strong>' + (s.totalMomotSearches || 0) + '</strong></td>',
+            '  <td><strong>' + (s.totalSolutionsLoaded || 0) + '</strong></td>',
+            '  <td><strong>' + (s.totalDirectManipulations || 0) + '</strong></td>',
+            '  <td><div class="level-pills">' + pills + '</div></td>',
+            '  <td class="duration-cell">' + formatTime(s.totalElapsedMs) + '</td>',
+            '  <td class="actions-cell">',
+            '    <button type="button" class="btn btn-secondary view-detail-btn" data-idx="' + idx + '">Details</button>',
+            '  </td>',
+            '</tr>'
+          ].join('');
+        });
+
+        tbody.innerHTML = html;
+
+        // Bind Detail Buttons
+        var detailBtns = tbody.querySelectorAll('.view-detail-btn');
+        detailBtns.forEach(function(btn) {
+          btn.onclick = function() {
+            var idx = parseInt(btn.getAttribute('data-idx'), 10);
+            openDetailModal(filtered[idx]);
+          };
+        });
+      }
+
+      function openDetailModal(sess) {
+        selectedSession = sess;
+        var modal = document.getElementById('detailModal');
+        document.getElementById('modalSessionTitle').textContent = 'Session: ' + sess.sessionId;
+        document.getElementById('modalSessionMeta').innerHTML = [
+          '<strong>User:</strong> ' + escapeHtml(sess.userId) + ' &nbsp;|&nbsp; ',
+          '<strong>Started:</strong> ' + (sess.startedAt || '-') + ' &nbsp;|&nbsp; ',
+          '<strong>Total Playtime:</strong> ' + formatTime(sess.totalElapsedMs) + ' &nbsp;|&nbsp; ',
+          '<strong>Runs:</strong> ' + (sess.totalProgramRuns || 0) + ' &nbsp;|&nbsp; ',
+          '<strong>Searches:</strong> ' + (sess.totalMomotSearches || 0) + ' &nbsp;|&nbsp; ',
+          '<strong>Loaded:</strong> ' + (sess.totalSolutionsLoaded || 0) + ' &nbsp;|&nbsp; ',
+          '<strong>DMs:</strong> ' + (sess.totalDirectManipulations || 0)
+        ].join('');
+
+        var tbody = document.getElementById('modalLevelsBody');
+        var rows = '';
+        for (var l = 1; l <= 10; l++) {
+          var rec = sess.levels && sess.levels[l];
+          var timeStr = rec && rec.elapsedMs > 0 ? formatTime(rec.elapsedMs) : '-';
+          var runs = rec && typeof rec.programRuns === 'number' ? rec.programRuns : 0;
+          var searches = rec && typeof rec.momotSearches === 'number' ? rec.momotSearches : 0;
+          var loaded = rec && typeof rec.solutionsLoaded === 'number' ? rec.solutionsLoaded : 0;
+          var dms = rec && typeof rec.directManipulations === 'number' ? rec.directManipulations : 0;
+          var varStr = rec && (rec.elapsedMs > 0 || runs > 0 || searches > 0 || loaded > 0 || dms > 0) ? (rec.variant || 'momot') : '-';
+          var updStr = rec && rec.updatedAt ? rec.updatedAt.replace('T', ' ').substring(0, 19) : '-';
+          rows += '<tr><td>Level ' + l + '</td><td>' + timeStr + '</td><td>' + runs + '</td><td>' + searches + '</td><td>' + loaded + '</td><td>' + dms + '</td><td>' + varStr + '</td><td>' + updStr + '</td></tr>';
+        }
+        tbody.innerHTML = rows;
+
+        var eventsList = document.getElementById('modalEventsList');
+        if (!sess.events || sess.events.length === 0) {
+          eventsList.innerHTML = '<div style="font-size: 13px; color: #8c959f; font-style: italic; padding: 8px 0;">No activity events recorded for this session.</div>';
+        } else {
+          var evHtml = '';
+          sess.events.forEach(function(ev) {
+            var isRun = ev.type === 'program_run';
+            var badgeClass = isRun ? 'badge-run' : 'badge-cand';
+            evHtml += '<div class="event-card">';
+            evHtml += '  <div class="event-meta">';
+            evHtml += '    <span class="' + badgeClass + '">' + escapeHtml(ev.type) + '</span>';
+            evHtml += '    <span><strong>Level ' + ev.level + '</strong></span>';
+            evHtml += '    <span>' + escapeHtml(ev.variant || '-') + '</span>';
+            evHtml += '    <span>' + escapeHtml(ev.timestamp || '-') + '</span>';
+            if (ev.modelName) {
+              evHtml += '    <span><strong>Model:</strong> ' + escapeHtml(ev.modelName) + '</span>';
+            }
+            if (ev.objectiveLine) {
+              evHtml += '    <span><strong>Obj:</strong> ' + escapeHtml(ev.objectiveLine) + '</span>';
+            }
+            evHtml += '  </div>';
+            if (ev.xml && ev.xml.trim()) {
+              evHtml += '  <div class="block-preview" data-xml="' + escapeHtml(ev.xml) + '"></div>';
+              evHtml += '  <details class="xml-details"><summary>Raw Workspace XML</summary><pre>' + escapeHtml(ev.xml) + '</pre></details>';
+            } else {
+              evHtml += '  <div style="font-size:12px; color:#8c959f; font-style:italic;">No workspace XML snapshot recorded.</div>';
+            }
+            evHtml += '</div>';
+          });
+          eventsList.innerHTML = evHtml;
+          if (window.BlockPreview && typeof window.BlockPreview.renderAll === 'function') {
+            window.BlockPreview.renderAll(eventsList);
+          }
+        }
+
+        modal.style.display = 'flex';
+      }
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
+      function downloadBlob(content, filename, mimeType) {
+        var blob = new Blob([content], { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // Event listeners
+      document.getElementById('loginBtn').onclick = attemptLogin;
+      document.getElementById('adminPasswordInput').onkeydown = function(e) {
+        if (e.key === 'Enter') attemptLogin();
+      };
+      document.getElementById('logoutBtn').onclick = showLogin;
+      document.getElementById('btnRefresh').onclick = fetchSessions;
+      document.getElementById('searchInput').oninput = renderDashboard;
+
+      document.getElementById('btnExportHtml').onclick = function() {
+        window.location.href = '/api/admin/export?format=html&token=' + encodeURIComponent(adminToken);
+      };
+      document.getElementById('btnExportJson').onclick = function() {
+        window.location.href = '/api/admin/export?format=json&token=' + encodeURIComponent(adminToken);
+      };
+
+      document.getElementById('modalCloseBtn').onclick = function() {
+        document.getElementById('detailModal').style.display = 'none';
+      };
+
+      document.getElementById('modalDownloadJson').onclick = function() {
+        if (!selectedSession) return;
+        var jsonStr = JSON.stringify(selectedSession, null, 2);
+        downloadBlob(jsonStr, 'session_' + selectedSession.sessionId + '.json', 'application/json');
+      };
+
+      document.getElementById('modalDownloadHtml').onclick = function() {
+        if (!selectedSession) return;
+        var sess = selectedSession;
+        var rows = '';
+        for (var l = 1; l <= 10; l++) {
+          var rec = sess.levels && sess.levels[l];
+          var timeStr = rec && rec.elapsedMs > 0 ? formatTime(rec.elapsedMs) : '-';
+          var runs = rec && typeof rec.programRuns === 'number' ? rec.programRuns : 0;
+          var searches = rec && typeof rec.momotSearches === 'number' ? rec.momotSearches : 0;
+          var loaded = rec && typeof rec.solutionsLoaded === 'number' ? rec.solutionsLoaded : 0;
+          var dms = rec && typeof rec.directManipulations === 'number' ? rec.directManipulations : 0;
+          var varStr = rec && (rec.elapsedMs > 0 || runs > 0 || searches > 0 || loaded > 0 || dms > 0) ? (rec.variant || 'momot') : '-';
+          rows += '<tr><td>Level ' + l + '</td><td>' + timeStr + '</td><td>' + runs + '</td><td>' + searches + '</td><td>' + loaded + '</td><td>' + dms + '</td><td>' + varStr + '</td></tr>\n';
+        }
+        var eventsHtml = '';
+        if (sess.events && sess.events.length > 0) {
+          sess.events.forEach(function(ev) {
+            var isRun = ev.type === 'program_run';
+            var badgeClass = isRun ? 'badge-run' : 'badge-cand';
+            eventsHtml += '<div class="event-card" style="background:#f6f8fa; border:1px solid #d0d7de; border-radius:6px; padding:10px 12px; margin-bottom:10px;">';
+            eventsHtml += '  <div style="font-size:12px; color:#57606a; display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">';
+            eventsHtml += '    <span style="font-weight:600; padding:2px 6px; border-radius:4px; font-size:11px; ' + (isRun ? 'background:#ddf4ff; color:#0969da;' : 'background:#dafbe1; color:#1a7f37;') + '">' + escapeHtml(ev.type) + '</span>';
+            eventsHtml += '    <span><strong>Level ' + ev.level + '</strong></span>';
+            eventsHtml += '    <span>' + escapeHtml(ev.variant || '-') + '</span>';
+            eventsHtml += '    <span>' + escapeHtml(ev.timestamp || '-') + '</span>';
+            if (ev.modelName) eventsHtml += '    <span><strong>Model:</strong> ' + escapeHtml(ev.modelName) + '</span>';
+            if (ev.objectiveLine) eventsHtml += '    <span><strong>Obj:</strong> ' + escapeHtml(ev.objectiveLine) + '</span>';
+            eventsHtml += '  </div>';
+            if (ev.xml && ev.xml.trim()) {
+              eventsHtml += '  <div class="block-preview" data-xml="' + escapeHtml(ev.xml) + '"></div>';
+              eventsHtml += '  <details style="margin-top:6px; font-size:11px;"><summary style="cursor:pointer; color:#57606a;">Raw XML</summary><pre style="background:#fff; border:1px solid #d0d7de; padding:6px; border-radius:4px; max-height:120px; overflow:auto;">' + escapeHtml(ev.xml) + '</pre></details>';
+            } else {
+              eventsHtml += '  <div style="font-size:12px; color:#8c959f; font-style:italic;">No workspace XML snapshot recorded.</div>';
+            }
+            eventsHtml += '</div>';
+          });
+        } else {
+          eventsHtml = '<div style="font-size:13px; color:#8c959f; font-style:italic;">No events recorded.</div>';
+        }
+
+        var previewStyles = (window.BlockPreview && typeof window.BlockPreview.getStyles === 'function') ? window.BlockPreview.getStyles() : '';
+        var previewScript = previewScriptCached || '';
+
+        var doc = [
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Session ' + escapeHtml(sess.sessionId) + '</title>',
+          '<style>',
+          'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:30px;background:#f6f8fa;color:#24292f;}',
+          '.card{background:#fff;padding:24px;border-radius:8px;max-width:850px;margin:0 auto;border:1px solid #d0d7de;}',
+          'table{width:100%;border-collapse:collapse;margin:16px 0;} th,td{padding:8px 12px;border:1px solid #d0d7de;text-align:left;font-size:13px;}',
+          'th{background:#f6f8fa;}',
+          previewStyles,
+          '</style>',
+          '</head><body><div class="card"><h2>Blockly Maze Session Report</h2><p><strong>Session ID:</strong> ' + escapeHtml(sess.sessionId) + '<br><strong>User:</strong> ' + escapeHtml(sess.userId) + '<br><strong>Total Time:</strong> ' + formatTime(sess.totalElapsedMs) + '<br><strong>Runs:</strong> ' + (sess.totalProgramRuns || 0) + ' | <strong>Searches:</strong> ' + (sess.totalMomotSearches || 0) + ' | <strong>Loaded:</strong> ' + (sess.totalSolutionsLoaded || 0) + ' | <strong>DMs:</strong> ' + (sess.totalDirectManipulations || 0) + '</p>',
+          '<h3>Level Summaries</h3>',
+          '<table><thead><tr><th>Level</th><th>Time</th><th>Runs</th><th>Searches</th><th>Loaded</th><th>DM</th><th>Variant</th></tr></thead><tbody>' + rows + '</tbody></table>',
+          '<h3 style="margin-top:24px;">Activity Timeline & Workspace Snapshots</h3>',
+          eventsHtml,
+          '</div>',
+          '<script>' + previewScript + '<\/script>',
+          '<script>',
+          'document.addEventListener("DOMContentLoaded", function() {',
+          '  if (window.BlockPreview && typeof window.BlockPreview.renderAll === "function") {',
+          '    window.BlockPreview.renderAll(document);',
+          '  }',
+          '});',
+          'if (window.BlockPreview && typeof window.BlockPreview.renderAll === "function") {',
+          '  window.BlockPreview.renderAll(document);',
+          '}',
+          '<\/script>',
+          '</body></html>'
+        ].join('\n');
+        downloadBlob(doc, 'session_' + sess.sessionId + '.html', 'text/html');
+      };
+
+      // Auto login check
+      if (adminToken) {
+        showDashboard();
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -142,14 +142,32 @@ public final class MomotResultsService {
             if (s != null && !s.trim().isEmpty()) idxToSummary.put(i, s.trim());
         }
 
-        // Model files.
+        // Model files: search models/, solutions/, and outDir directly.
+        List<File> modelFilesList = new ArrayList<>();
         File modelsDir = new File(outDir, "models");
-        File[] modelFiles = modelsDir.listFiles(f -> f != null && f.isFile() && f.getName().toLowerCase().endsWith(".xmi"));
-        if (modelFiles == null) modelFiles = new File[0];
+        if (modelsDir.exists() && modelsDir.isDirectory()) {
+            File[] mfs = modelsDir.listFiles(f -> f != null && f.isFile() && f.getName().toLowerCase().endsWith(".xmi"));
+            if (mfs != null) Collections.addAll(modelFilesList, mfs);
+        }
+        File solutionsDir = new File(outDir, "solutions");
+        if (solutionsDir.exists() && solutionsDir.isDirectory()) {
+            File[] sfs = solutionsDir.listFiles(f -> f != null && f.isFile() && f.getName().toLowerCase().endsWith(".xmi"));
+            if (sfs != null) {
+                for (File f : sfs) {
+                    if (!modelFilesList.contains(f)) modelFilesList.add(f);
+                }
+            }
+        }
+        File[] directFs = outDir.listFiles(f -> f != null && f.isFile() && f.getName().toLowerCase().endsWith(".xmi"));
+        if (directFs != null) {
+            for (File f : directFs) {
+                if (!modelFilesList.contains(f)) modelFilesList.add(f);
+            }
+        }
 
         List<SolutionEntry> entries = new ArrayList<>();
-        for (int m = 0; m < modelFiles.length; m++) {
-            File mf = modelFiles[m];
+        for (int i = 0; i < modelFilesList.size(); i++) {
+            File mf = modelFilesList.get(i);
             SolutionEntry e = new SolutionEntry();
             e.outputDir = outDir.getPath();
             e.modelPath = mf.getPath();
@@ -157,9 +175,9 @@ public final class MomotResultsService {
             int idx = -1;
             double[] modelObjs = parseDoublesFromFilename(mf.getName());
             if (modelObjs != null && modelObjs.length > 0) {
-                for (int i = 0; i < parsedObjectives.size(); i++) {
-                    if (doublesEqual(modelObjs, parsedObjectives.get(i))) {
-                        idx = i;
+                for (int j = 0; j < parsedObjectives.size(); j++) {
+                    if (doublesEqual(modelObjs, parsedObjectives.get(j))) {
+                        idx = j;
                         break;
                     }
                 }
@@ -170,11 +188,40 @@ public final class MomotResultsService {
                 e.summary = idxToSummary.get(idx);
                 e.timeToFormMs = idxToTime.get(idx);
                 e.generationToForm = idxToGen.get(idx);
-                entries.add(e);
-            } else if (objectiveLines.isEmpty()) {
-                if (m < solutionSummaries.size()) e.summary = idxToSummary.get(m);
-                if (m < timeLines.size()) e.timeToFormMs = idxToTime.get(m);
-                if (m < genLines.size()) e.generationToForm = idxToGen.get(m);
+            } else if (idxToObjective.containsKey(i)) {
+                e.objectiveLine = idxToObjective.get(i);
+                e.summary = idxToSummary.get(i);
+                e.timeToFormMs = idxToTime.get(i);
+                e.generationToForm = idxToGen.get(i);
+            } else {
+                // Fall back: attach first objective/summary if only one exists.
+                if (objectiveLines.size() == 1) e.objectiveLine = objectiveLines.get(0).trim();
+                if (solutionSummaries.size() == 1) e.summary = solutionSummaries.get(0).trim();
+                if (timeLines.size() == 1) e.timeToFormMs = idxToTime.get(0);
+                if (genLines.size() == 1) e.generationToForm = idxToGen.get(0);
+            }
+
+            if (e.summary == null || e.summary.isBlank()) {
+                e.summary = "Solution " + (i + 1) + ": " + mf.getName();
+            }
+
+            entries.add(e);
+        }
+
+        // Fallback: If no .xmi model files were generated, but objectives or summaries exist
+        if (entries.isEmpty() && (!objectiveLines.isEmpty() || !solutionSummaries.isEmpty())) {
+            int maxCount = Math.max(objectiveLines.size(), solutionSummaries.size());
+            for (int i = 0; i < maxCount; i++) {
+                SolutionEntry e = new SolutionEntry();
+                e.outputDir = outDir.getPath();
+                e.modelPath = outDir.getPath();
+                if (i < objectiveLines.size()) e.objectiveLine = objectiveLines.get(i).trim();
+                if (i < solutionSummaries.size()) e.summary = solutionSummaries.get(i).trim();
+                if (i < timeLines.size()) e.timeToFormMs = idxToTime.get(i);
+                if (i < genLines.size()) e.generationToForm = idxToGen.get(i);
+                if (e.summary == null || e.summary.isBlank()) {
+                    e.summary = "Solution " + (i + 1);
+                }
                 entries.add(e);
             }
         }

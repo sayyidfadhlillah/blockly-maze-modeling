@@ -3,11 +3,23 @@ package blocky_momot.listener;
 import at.ac.tuwien.big.moea.experiment.executor.SearchExecutor;
 import at.ac.tuwien.big.moea.experiment.executor.listener.AbstractProgressListener;
 import at.ac.tuwien.big.momot.problem.solution.TransformationSolution;
+import at.ac.tuwien.big.momot.util.MomotUtil;
+import blocky.Game;
+import blocky_momot.BlockyProgramDistance;
+import blocky_momot.BlockyProgramMetrics;
+import blocky_momot.BlockySimulator;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.eclipse.emf.ecore.EObject;
+import org.moeaframework.algorithm.NSGAII;
 import org.moeaframework.core.Algorithm;
 import org.moeaframework.core.NondominatedPopulation;
 import org.moeaframework.core.Solution;
@@ -33,6 +45,18 @@ public class ParetoFrontPublisherListener extends AbstractProgressListener {
     private volatile int populationSize = 50;
     private volatile Algorithm currentAlgorithm;
     private volatile boolean stopOnFirstGoal = false;
+
+    // Non-goal archive (Improvement-Plan.md, section 3.6): with the gated objectives every goal-reaching candidate
+    // dominates every non-goal one, so the Pareto front keeps at most one near-miss. The archive keeps the
+    // non-goal candidates that came closest to the goal so that the solution panel can list them. It only records
+    // candidates; it never feeds back into selection. blocky.nonGoalArchive = number of candidates kept (0 = off).
+    private static final int OBJ_EDITS = 1;
+    private static final int OBJ_ACTIONS = 2;
+    private static final int OBJ_CLOSEST_TO_GOAL = 3;
+    private static final int OBJ_BLOCKS = 4;
+    private static final double NO_VALUE = 100000.0;
+    private final List<TransformationSolution> nonGoalArchive = new ArrayList<>();
+    private final Set<Solution> archiveSeen = Collections.newSetFromMap(new WeakHashMap<>());
 
     public ParetoFrontPublisherListener() {}
 
@@ -90,6 +114,108 @@ public class ParetoFrontPublisherListener extends AbstractProgressListener {
         synchronized (globalParetoFront) {
             this.globalParetoFront.clear();
         }
+        synchronized (nonGoalArchive) {
+            this.nonGoalArchive.clear();
+            this.archiveSeen.clear();
+        }
+    }
+
+    /** Copies of the archived non-goal candidates; their objectives are the display values (see below). */
+    public List<Solution> getNonGoalArchiveSnapshot() {
+        synchronized (nonGoalArchive) {
+            return new ArrayList<Solution>(nonGoalArchive);
+        }
+    }
+
+    /**
+     * Adds the non-goal candidates of the algorithm's population that came closest to the goal. The objective
+     * values of a non-goal candidate are the gate penalty (100000) for Edits, Actions and Blocks, so two near-misses
+     * with the same closestToGoal would have the same vector, and the same model file name. The archive therefore
+     * stores a COPY whose Edits, Actions and Blocks are the real values, computed here after the fact. These
+     * display values are not used by the search, and the original solutions are never changed.
+     *
+     * @return true if the archive changed
+     */
+    private boolean updateNonGoalArchive(Algorithm algorithm, long elapsedMs, int generation) {
+        int size = Integer.getInteger("blocky.nonGoalArchive", 0);
+        if (size <= 0 || !(algorithm instanceof NSGAII nsga)) {
+            return false;
+        }
+        boolean changed = false;
+        try {
+            List<TransformationSolution> candidates = new ArrayList<>();
+            for (Solution s : nsga.getPopulation()) {
+                if (s instanceof TransformationSolution ts && !isGoalSolution(ts)
+                        && ts.getNumberOfObjectives() > OBJ_CLOSEST_TO_GOAL
+                        && ts.getObjective(OBJ_CLOSEST_TO_GOAL) < NO_VALUE) {
+                    candidates.add(ts);
+                }
+            }
+            candidates.sort(Comparator.comparingDouble(c -> c.getObjective(OBJ_CLOSEST_TO_GOAL)));
+            synchronized (nonGoalArchive) {
+                int looked = 0;
+                for (TransformationSolution ts : candidates) {
+                    if (looked >= 2 * size) {
+                        break;
+                    }
+                    double closest = ts.getObjective(OBJ_CLOSEST_TO_GOAL);
+                    if (nonGoalArchive.size() >= size
+                            && closest > nonGoalArchive.get(nonGoalArchive.size() - 1).getObjective(OBJ_CLOSEST_TO_GOAL)) {
+                        break; // sorted: no later candidate is closer than what the archive already holds
+                    }
+                    if (!archiveSeen.add(ts)) {
+                        continue; // already looked at this solution object (elites stay in the population)
+                    }
+                    looked++;
+                    double[] display = displayObjectives(ts);
+                    if (display == null) {
+                        continue;
+                    }
+                    TransformationSolution copy = ts.copy();
+                    copy.setObjectives(display);
+                    copy.setAttribute(ATTRIBUTE_TIME_TO_FORM, elapsedMs);
+                    copy.setAttribute(ATTRIBUTE_GENERATION_TO_FORM, generation);
+                    boolean duplicate = false;
+                    for (TransformationSolution existing : nonGoalArchive) {
+                        if (haveSameObjectives(existing, copy)) {
+                            duplicate = true;
+                            break;
+                        }
+                    }
+                    if (!duplicate) {
+                        nonGoalArchive.add(copy);
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    // closest to the goal first; fewer blocks first among equals
+                    nonGoalArchive.sort(Comparator
+                            .comparingDouble((TransformationSolution c) -> c.getObjective(OBJ_CLOSEST_TO_GOAL))
+                            .thenComparingDouble(c -> c.getNumberOfObjectives() > OBJ_BLOCKS ? c.getObjective(OBJ_BLOCKS) : 0.0));
+                    while (nonGoalArchive.size() > size) {
+                        nonGoalArchive.remove(nonGoalArchive.size() - 1);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[MoMoT] non-goal archive skipped: " + t);
+        }
+        return changed;
+    }
+
+    /** The objective vector of a non-goal candidate with Edits, Actions and Blocks replaced by their real values. */
+    private static double[] displayObjectives(TransformationSolution ts) {
+        EObject root = MomotUtil.getRoot(ts.execute());
+        if (!(root instanceof Game game) || game.getLevels().isEmpty() || game.getLevels().get(0) == null) {
+            return null;
+        }
+        double[] display = ts.getObjectives().clone();
+        display[OBJ_EDITS] = BlockyProgramDistance.distanceToBaseline(game);
+        display[OBJ_ACTIONS] = BlockySimulator.simulationSteps(game.getLevels().get(0));
+        if (display.length > OBJ_BLOCKS) {
+            display[OBJ_BLOCKS] = BlockyProgramMetrics.countStatements(game);
+        }
+        return display;
     }
 
     public Long getFirstGoalReachedTimeMs() {
@@ -224,6 +350,10 @@ public class ParetoFrontPublisherListener extends AbstractProgressListener {
                             }
                         }
                     }
+                }
+
+                if (updateNonGoalArchive(algorithm, elapsed, currentGen)) {
+                    newSolutionFound = true;
                 }
 
                 boolean shouldNotify = newSolutionFound

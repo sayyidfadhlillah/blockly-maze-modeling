@@ -1,12 +1,20 @@
 package blocky_momot;
 
+import blocky.AtomicStatement;
+import blocky.BlockyPackage;
+import blocky.Body;
+import blocky.Container;
+import blocky.Game;
+import blocky.IfStmt;
+import blocky.Level;
+import blocky.Loop;
+import blocky.Statement;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EPackage;
 import org.eclipse.emf.ecore.resource.Resource;
@@ -14,68 +22,115 @@ import org.eclipse.emf.ecore.resource.ResourceSet;
 import org.eclipse.emf.ecore.resource.impl.ResourceSetImpl;
 import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl;
 
-import blocky.AtomicStatement;
-import blocky.BlockyPackage;
-import blocky.Body;
-import blocky.Game;
-import blocky.IfStmt;
-import blocky.Level;
-import blocky.Loop;
-import blocky.Container;
-import blocky.Statement;
-
 /**
  * "Closeness to input model" for the Blocky program subgraph (Level.solution).
  *
- * This implements a tree edit distance counted in user-visible blocks. The blocks the
- * end user sees in the editor are exactly the {@link Statement} subtypes:
- * <ul>
- *   <li>{@link AtomicStatement} (move forward / turn left / turn right),</li>
- *   <li>{@link Loop} (repeat-until-goal), and</li>
- *   <li>{@link IfStmt} (if / if-else).</li>
- * </ul>
- * {@link Container} and {@link Body} are EMF plumbing and never count towards the distance.
+ * <p>This implements a tree edit distance counted in user-visible blocks. The blocks the end user
+ * sees in the editor are exactly the {@link Statement} subtypes:
  *
- * Each unit of distance corresponds to exactly one block edit:
  * <ul>
- *   <li>insert one block (insert cost = subtree size of the inserted block),</li>
- *   <li>delete one block (delete cost = subtree size of the deleted block), or</li>
- *   <li>relabel one block in place: {@link AtomicStatement} kind change costs 1, {@link IfStmt}
- *       condition change costs 1; identical labels cost 0.</li>
+ *   <li>{@link blocky.AtomicStatement} (move forward / turn left / turn right),
+ *   <li>{@link blocky.Loop} (repeat-until-goal), and
+ *   <li>{@link blocky.IfStmt} (if / if-else).
  * </ul>
+ *
+ * {@link blocky.Container} and {@link blocky.Body} are EMF plumbing and never count towards the
+ * distance.
+ *
+ * <p>Each unit of distance corresponds to exactly one block edit:
+ *
+ * <ul>
+ *   <li>insert one block (insert cost = subtree size of the inserted block),
+ *   <li>delete one block (delete cost = subtree size of the deleted block), or
+ *   <li>relabel one block in place: {@link blocky.AtomicStatement} kind change costs 1,
+ *       {@link blocky.IfStmt} condition change costs 1; identical labels cost 0.
+ * </ul>
+ *
  * Same-class substitution recurses into bodies (Loop body; IfStmt then-body and else-body).
- * Different-class substitution falls back to a full delete + insert, so swapping a leaf
- * statement for a large {@code Loop}/{@code IfStmt} subtree is charged for every new block.
- * Ordered sibling sequences are aligned with a standard sequence edit distance DP, so
- * matching statements at corresponding positions cost 0 even when surrounded by inserts/deletes.
+ * Different-class substitution falls back to a full delete + insert, so swapping a leaf statement
+ * for a large {@code Loop}/{@code IfStmt} subtree is charged for every new block. Ordered sibling
+ * sequences are aligned with a standard sequence edit distance DP, so matching statements at
+ * corresponding positions cost 0 even when surrounded by inserts/deletes.
  *
- * See: https://en.wikipedia.org/wiki/Graph_edit_distance
+ * <p>See: https://en.wikipedia.org/wiki/Graph_edit_distance
  */
 public final class BlockyProgramDistance {
     private BlockyProgramDistance() {}
 
-    private static volatile Body BASELINE_SOLUTION;
+    private static final ThreadLocal<Body> THREAD_BASELINE = new ThreadLocal<>();
 
     /**
-     * Load and cache the baseline solution from the given XMI file path.
-     * The path may be relative (resolved against {@code user.dir}).
+     * Sets the baseline solution for the current thread from an XMI file path.
      */
-    public static synchronized void initializeBaseline(String gameXmiPath) {
-        if (BASELINE_SOLUTION != null) {
+    public static void setThreadBaseline(String gameXmiPath) {
+        if (gameXmiPath == null || gameXmiPath.isBlank()) {
+            THREAD_BASELINE.remove();
             return;
         }
         Game game = loadGame(gameXmiPath);
-        BASELINE_SOLUTION = firstLevelSolutionOrNull(game);
+        Body body = firstLevelSolutionOrNull(game);
+        THREAD_BASELINE.set(body);
+    }
+
+    /**
+     * Sets the baseline solution directly for the current thread.
+     */
+    public static void setThreadBaseline(Body baselineBody) {
+        if (baselineBody == null) {
+            THREAD_BASELINE.remove();
+        } else {
+            THREAD_BASELINE.set(baselineBody);
+        }
+    }
+
+    /**
+     * Returns the baseline solution for the current thread, or null if none is set.
+     */
+    public static Body getThreadBaseline() {
+        return THREAD_BASELINE.get();
+    }
+
+    /**
+     * Clears the baseline solution for the current thread.
+     */
+    public static void clearThreadBaseline() {
+        THREAD_BASELINE.remove();
+    }
+
+    /**
+     * Load and cache the baseline solution from the given XMI file path for the current thread.
+     */
+    public static synchronized void initializeBaseline(String gameXmiPath) {
+        if (gameXmiPath == null || gameXmiPath.isBlank()) {
+            return;
+        }
+        setThreadBaseline(gameXmiPath);
     }
 
     public static int distanceToBaseline(Game currentGame) {
-        Body baseline = BASELINE_SOLUTION;
+        Body baseline = THREAD_BASELINE.get();
         if (baseline == null) {
-            // Defensive: if initialization wasn't called or failed, treat as "far away".
+            // Defensive: if no baseline was set for this search thread, treat as "far away".
             return 100000;
         }
         Body current = firstLevelSolutionOrNull(currentGame);
         return programDistance(baseline, current);
+    }
+
+    public static int distanceToBaseline(Body baseline, Game currentGame) {
+        if (baseline == null) {
+            return 100000;
+        }
+        Body current = firstLevelSolutionOrNull(currentGame);
+        return programDistance(baseline, current);
+    }
+
+    public static Body loadSolutionFromXmi(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        Game game = loadGame(path);
+        return firstLevelSolutionOrNull(game);
     }
 
     private static Body firstLevelSolutionOrNull(Game game) {
@@ -119,9 +174,7 @@ public final class BlockyProgramDistance {
         return (Game) r.getContents().get(0);
     }
 
-    /**
-     * Distance between two program bodies (may be null).
-     */
+    /** Distance between two program bodies (may be null). */
     public static int programDistance(Body a, Body b) {
         List<Statement> as = toSequence(a);
         List<Statement> bs = toSequence(b);
@@ -169,7 +222,8 @@ public final class BlockyProgramDistance {
             for (int j = n - 1; j >= 0; j--) {
                 int del = dp[i + 1][j] + deleteCost(a.get(i), sizeCache);
                 int ins = dp[i][j + 1] + insertCost(b.get(j), sizeCache);
-                int sub = dp[i + 1][j + 1] + statementSubstitutionCost(a.get(i), b.get(j), sizeCache, stmtDistCache);
+                int sub = dp[i + 1][j + 1]
+                        + statementSubstitutionCost(a.get(i), b.get(j), sizeCache, stmtDistCache);
                 dp[i][j] = Math.min(del, Math.min(ins, sub));
             }
         }
@@ -201,8 +255,6 @@ public final class BlockyProgramDistance {
 
         int cost;
         if (a.getClass() == b.getClass()) {
-            // Same kind of block: pay only the relabel cost (0 or 1) plus the recursive
-            // distance between corresponding child bodies.
             cost = 0;
             if (a instanceof AtomicStatement) {
                 if (((AtomicStatement) a).getKind() != ((AtomicStatement) b).getKind()) {
@@ -218,8 +270,6 @@ public final class BlockyProgramDistance {
                 cost += programDistance(((IfStmt) a).getElseBody(), ((IfStmt) b).getElseBody(), sizeCache, stmtDistCache);
             }
         } else {
-            // Different kind of block: there is no natural relabel-and-recurse, so charge the
-            // honest cost of deleting the old block (and its subtree) and inserting the new one.
             cost = deleteCost(a, sizeCache) + insertCost(b, sizeCache);
         }
 
@@ -271,7 +321,6 @@ public final class BlockyProgramDistance {
 
         @Override
         public int hashCode() {
-            // Identity semantics: statements are EObjects; we want fast caching by object identity.
             return System.identityHashCode(a) * 31 + System.identityHashCode(b);
         }
 

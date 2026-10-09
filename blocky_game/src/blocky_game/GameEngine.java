@@ -265,12 +265,26 @@ public class GameEngine {
         Resource.Factory.Registry.INSTANCE.getExtensionToFactoryMap().put("xmi", new XMIResourceFactoryImpl());
 
         ResourceSet resSet = new ResourceSetImpl();
-        java.io.File xmiFile = new java.io.File("blocky_game/level1_state.xmi").getAbsoluteFile();
-        if (!xmiFile.getParentFile().exists()) {
-            // Try alternate paths
+        java.io.File xmiFile = new java.io.File("blocky_game/model/input/1.xmi").getAbsoluteFile();
+        if (!xmiFile.exists()) {
+            xmiFile = new java.io.File("model/input/1.xmi").getAbsoluteFile();
+        }
+        if (!xmiFile.exists()) {
+            xmiFile = new java.io.File("blocky_game/level1_state.xmi").getAbsoluteFile();
+        }
+        if (!xmiFile.exists()) {
             xmiFile = new java.io.File("level1_state.xmi").getAbsoluteFile();
         }
-        System.out.println("[GameEngine] XMI file path: " + xmiFile.getAbsolutePath());
+        System.out.println("[GameEngine] Initial XMI file path: " + xmiFile.getAbsolutePath());
+        if (xmiFile.exists()) {
+            try {
+                loadFromFile(xmiFile);
+                return;
+            } catch (Exception e) {
+                System.err.println("[GameEngine] Could not load default initial level from " + xmiFile + ": " + e.getMessage());
+            }
+        }
+
         resource = resSet.createResource(URI.createFileURI(xmiFile.getAbsolutePath()));
 
         // Root object is now Game, which contains one or more Levels.
@@ -607,13 +621,20 @@ public class GameEngine {
         GameState initialState = BlockyFactory.eINSTANCE.createGameState();
         initialState.setStep(0);
 
-        Cell startNode = null;
-        for (Cell c : currentLevel.getMap().getCells()) {
-            if (c.getType() == CellType.START)
-                startNode = c;
+        if (currentLevel == null) {
+            logs.add("Result: CRASH (No current level)");
+            return logs;
         }
-        if (startNode == null)
-            startNode = currentLevel.getMap().getCells().get(0);
+
+        Cell startNode = null;
+        if (currentLevel.getMap() != null) {
+            for (Cell c : currentLevel.getMap().getCells()) {
+                if (c != null && c.getType() == CellType.START)
+                    startNode = c;
+            }
+            if (startNode == null && !currentLevel.getMap().getCells().isEmpty())
+                startNode = currentLevel.getMap().getCells().get(0);
+        }
 
         initialState.setPosition(startNode);
         Direction startDir = SimUtils.determineStartOrientation(currentLevel, startNode);
@@ -886,6 +907,7 @@ public class GameEngine {
     }
 
     private Cell getAdjacent(Cell c, Direction d) {
+        if (c == null || d == null) return null;
         switch (d) {
             case NORTH:
                 return c.getTop();

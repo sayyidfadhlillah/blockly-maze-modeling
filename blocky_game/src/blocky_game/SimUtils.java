@@ -72,7 +72,7 @@ public final class SimUtils {
         return false;
     }
 
-    private static int countStatements(Body body) {
+    public static int countStatements(Body body) {
         if (body == null) return 0;
         return countStatements(body.getFirstContainer());
     }

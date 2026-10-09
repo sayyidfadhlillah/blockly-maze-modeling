@@ -1,6 +1,6 @@
 package blocky_momot;
 
-import java.util.concurrent.ThreadLocalRandom;
+import org.moeaframework.core.PRNG;
 
 import at.ac.tuwien.big.momot.problem.unit.parameter.IParameterValue;
 import blocky.AtomicStatementKind;
@@ -19,7 +19,7 @@ public final class RandomAtomicKindLiteralValue implements IParameterValue<Atomi
 
 	@Override
 	public AtomicStatementKind nextValue() {
-		int v = ThreadLocalRandom.current().nextInt(0, 3);
+		int v = PRNG.nextInt(3);
 		if (v == 0) return AtomicStatementKind.TURN_LEFT;
 		if (v == 1) return AtomicStatementKind.TURN_RIGHT;
 		return AtomicStatementKind.MOVE_FORWARD;
