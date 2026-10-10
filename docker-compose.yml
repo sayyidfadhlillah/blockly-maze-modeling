@@ -12,6 +12,7 @@ services:
       - BLOCKY_WRAP=${BLOCKY_WRAP:-true}
     ports:
       - "6080:6080"
+      - "8080:8080"
     volumes:
       - .:/app
       - /app/blocky_game/target

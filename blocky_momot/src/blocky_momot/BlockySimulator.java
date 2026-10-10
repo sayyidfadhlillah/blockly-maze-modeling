@@ -542,7 +542,10 @@ public final class BlockySimulator {
             CellType winCellType,
             Map<Cell, Integer> distanceField,
             int currentMin) {
-        GameState next = executeSingleLite(stmt, prev, level, winCellType);
+        // executeSingleLite already runs a whole If/Loop body, so for those only enter the statement here and
+        // let the branches below run the body once while tracking the minimum distance
+        boolean container = stmt instanceof Loop || stmt instanceof IfStmt;
+        GameState next = container ? enterStatement(stmt, prev) : executeSingleLite(stmt, prev, level, winCellType);
         int min = minDistanceAt(next, distanceField, currentMin);
         if (min == 0 || next.getStatus() != GameStatus.RUNNING || stmt == null) {
             return new ExecResult(next, min);
@@ -732,7 +735,7 @@ public final class BlockySimulator {
         return next;
     }
 
-    private static GameState executeSingleLite(Statement stmt, GameState prev, Level level, CellType winCellType) {
+    private static GameState enterStatement(Statement stmt, GameState prev) {
         GameState next = BlockyFactory.eINSTANCE.createGameState();
         next.setStep(prev.getStep() + 1);
         next.setOrientation(prev.getOrientation());
@@ -740,6 +743,11 @@ public final class BlockySimulator {
         next.setStatus(GameStatus.RUNNING);
         next.setExecutingStatement(stmt);
         next.setPrevious(prev);
+        return next;
+    }
+
+    private static GameState executeSingleLite(Statement stmt, GameState prev, Level level, CellType winCellType) {
+        GameState next = enterStatement(stmt, prev);
 
         if (stmt == null) {
             return next; // empty container -> no-op
