@@ -21,10 +21,10 @@ MAX_EVAL="${BLOCKY_MAX_EVAL:-$((POP_SIZE * ITERATIONS))}"
 ALGORITHM="${BLOCKY_ALGORITHM:-NSGA_II}"
 # Multiplies the canonical solutionLength of every level (default 1)
 SOL_LEN_FACTOR="${BLOCKY_SOL_LEN_FACTOR:-1}"
-# CURRENT (default) or GATED (Edits, Actions and Blocks only count for candidates that reach the goal)
-OBJECTIVES="${BLOCKY_OBJECTIVES:-CURRENT}"
-# true = use the *_wrap.henshin rule files (wrap/unwrap moves, see tools/henshin-prototype); default false
-WRAP="${BLOCKY_WRAP:-false}"
+# GATED (default; Edits, Actions and Blocks only count for candidates that reach the goal) or CURRENT
+OBJECTIVES="${BLOCKY_OBJECTIVES:-GATED}"
+# true (default) = use the *_wrap.henshin rule files (wrap/unwrap moves, see tools/henshin-prototype); false turns them off
+WRAP="${BLOCKY_WRAP:-true}"
 
 LOG="$ROOT/blocky_momot/analysis/first_goal_benchmark_${SESSION}.log"
 CP_FILE="$ROOT/blocky_game/target/first-goal-benchmark.cp"

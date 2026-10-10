@@ -484,6 +484,9 @@
 
                 var mRunBtn = mkBtn('__momotRunBtn', 'Run', 'Execute MOMoT search');
                 mRunBtn.style.background = 'rgba(70, 150, 70, 0.6)';
+                // Hidden: the search starts when the Direct Manipulation marker is placed (window.__momotStartRun).
+                // The button stays in the DOM because that function is registered on it.
+                mRunBtn.style.display = 'none';
                 var mStopBtn = mkBtn('__momotStopBtn', 'Stop', 'Stop current MOMoT search');
                 mStopBtn.style.background = 'rgba(180, 50, 50, 0.6)';
 
@@ -493,7 +496,7 @@
                 settings.appendChild(labRuns); settings.appendChild(inpRuns);
                 settings.appendChild(labSolLen); settings.appendChild(inpSolLen);
 
-                var refreshBtn = mkBtn('__momotRefreshBtn', 'Refresh', 'Reload solutions from output folders');
+                var clearOverlayBtn = mkBtn('__momotClearOverlayBtn', 'Clear path', 'Clear the comparison path and the marker from the maze');
                 var logToggleBtn = mkBtn('__momotLogToggleBtn', 'Log', 'Show or hide the MoMoT log');
                 logToggleBtn.addEventListener('click', function() {
                     var show = (log.style.display === 'none');
@@ -530,8 +533,8 @@
                 setInterval(updateCloseBtnState, 500);
                 right.appendChild(mRunBtn);
                 right.appendChild(mStopBtn);
-                right.appendChild(refreshBtn);
                 right.appendChild(logToggleBtn);
+                right.appendChild(clearOverlayBtn);
                 right.appendChild(gearBtn);
                 right.appendChild(mCloseBtn);
                 header.appendChild(title); header.appendChild(right);
@@ -820,11 +823,6 @@
                         var arr = [];
                         try { arr = (typeof txt === 'string') ? JSON.parse(txt) : txt; } catch(e2) { arr = []; }
                         renderSolutions(arr);
-                        try { if (window.__dbgDrawComparisonPath) window.__dbgDrawComparisonPath([]); } catch(eC) {}
-                        try {
-                            var oldMarker = document.getElementById('dmgMarker');
-                            if (oldMarker && oldMarker.parentNode) oldMarker.parentNode.removeChild(oldMarker);
-                        } catch(eM) {}
                     } catch(e) { setStatus('Refresh failed'); }
                 }
 
@@ -833,7 +831,13 @@
                     try { refresh(); } catch(e2) {}
                 };
 
-                refreshBtn.addEventListener('click', function(){ refresh(); });
+                clearOverlayBtn.addEventListener('click', function(){
+                    try { if (window.__dbgDrawComparisonPath) window.__dbgDrawComparisonPath([]); } catch(eC) {}
+                    try {
+                        var oldMarker = document.getElementById('dmgMarker');
+                        if (oldMarker && oldMarker.parentNode) oldMarker.parentNode.removeChild(oldMarker);
+                    } catch(eM) {}
+                });
                 mStopBtn.addEventListener('click', function(){
                     try {
                         var bridge = window.javaBridge || (window.parent && window.parent.javaBridge);

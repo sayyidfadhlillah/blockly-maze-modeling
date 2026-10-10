@@ -4,20 +4,24 @@ This document is a guide that anybody on the project can follow to apply, check 
 
 Related documents: `Benchmark-Analysis.md` (every benchmark result and its limits), `Exploration-Proposal.md` (hypotheses and experiments), `Landscape-Analysis.md` (the enumeration measurements behind the relaxed gate), `AGENTS.md` (project conventions).
 
-## 1. The ten improvements at a glance
+## 1. The improvements at a glance
 
 | # | Improvement | Needed for | Evidence | State in the repository | Remaining work |
 |---|---|---|---|---|---|
 | 1 | Fix the `closestToGoal` objective | Progress towards the goal can guide the search | Bug found in step 1 (constant 100000 on levels 2–10). Alone: 12 → 16 of 120 solved (p = 0.54) | Done in `blocky_custom.java` | Make sure it is committed; verify (section 3.1) |
-| 2 | Gated objectives (`Edits`, `Actions`, `Blocks` only count for goal-reaching candidates) | Not rewarding small programs that do nothing | **Measured:** 16 → 61 of 120 on levels 4–9 (p < 0.001), equal to random search | Done in `blocky_custom.java`, switch `blocky.objectives=GATED` | Make GATED the default outside Docker (section 3.2) |
+| 2 | Gated objectives (`Edits`, `Actions`, `Blocks` only count for goal-reaching candidates) | Not rewarding small programs that do nothing | **Measured:** 16 → 61 of 120 on levels 4–9 (p < 0.001), equal to random search | Done in `blocky_custom.java`, **on by default**; `blocky.objectives=CURRENT` turns it off | Nothing (sections 3.2, 3.11) |
 | 3 | Edit and delete rules (`*_edit_anywhere`) | Repairing buggy programs | **Not measured.** Observed by the project owner with the original exploration | Generated `.henshin` files exist and the game uses them | Port the source to `.henshin_text`, test repair (section 3.3) |
-| 4 | Wrap and unwrap rules (`*_wrap`) | Adding structure without destroying what a program already does | **Measured:** 39 → 56 of 100 on levels 6–10 (p < 0.001), 56 against 37 of 80 for random search on levels 6–9. Confounded, see below | Generated `.henshin` files exist, switch `blocky.rules.wrap=true` | Decide the rule set that ships (section 3.4) |
+| 4 | Wrap and unwrap rules (`*_wrap`) | Adding structure without destroying what a program already does | **Measured:** 39 → 56 of 100 on levels 6–10 (p < 0.001), 56 against 37 of 80 for random search on levels 6–9. Confounded, see below | Generated `.henshin` files exist, **on by default**; `blocky.rules.wrap=false` turns it off | Decide the rule set that ships (sections 3.4, 3.11) |
 | 5 | Relaxed gate at `T = R − 5` | Letting near-solutions compete on size | **Landscape only.** No search has used it | **Not implemented** | Implement behind a switch (section 3.5) |
 | 6 | Always show non-goal candidates in the MoMoT solution panel | Seeing how close the search got when it has not (yet) found a solution, and what it is working on | A usability request. Two separate causes hide them today (UI filter, and the Pareto front under gating) | **Implemented, GUI check pending** | Check in the app (section 3.6) |
 | 7 | Fixed exploration parameters, hidden from the MoMoT panel | Users should not have to choose seeds, population, iterations, runs, solution length or algorithm | A usability request. Defaults sit between the old panel and the benchmark settings; the solution length is a constant 10 | **Implemented, compiles, GUI check pending** | Check in the app (section 3.7) |
 | 8 | Remove the Execution log window of the game | Less clutter in the game UI | A usability request | **Implemented, compiles, GUI check pending** | Check in the app (section 3.8) |
 | 9 | MoMoT panel: progress bar, elapsed time, log hidden behind a button | Seeing that a search runs and how far it is, without the log | A usability request. The data (`nfe`) was already delivered to the panel | **Implemented, compiles, GUI check pending** | Check in the app, in particular the run counter (section 3.9) |
 | 10 | MoMoT panel: no Refresh, Load or Run buttons; a "Clear path" button; the search starts when a Direct Manipulation marker is placed | The panel refreshes itself, double-click already loads a row, and placing the marker is the only way to define the target | A usability request | **Implemented, compiles, GUI check pending** | Check in the app, in particular that Direct Manipulation and the close button are blocked while a search runs (section 3.10) |
+| 11 | Gated objectives and the edit/delete + wrap/unwrap rules are on by default; the switches only turn them off | The game (`Main.java`), Docker and the benchmark script run the same configuration without flags | A configuration cleanup. `Main.java` never set `blocky.rules.wrap`, so the desktop game ran without wrap | **Implemented, compiles, not run** | Rebuild Docker and check the log shows `..._edit_anywhere_wrap.henshin` and `GATED` (section 3.11) |
+| 12 | Admin page: time of one exploration iteration (previous run to this run, active and wall-clock), with average and median per level | Measuring how long a user's exploration iterations take | A research request: the interval between two "Run Program" clicks is taken as one iteration | **Implemented, compiles, not run** | Rebuild Docker and check with a real session (section 3.12) |
+| 13 | MoMoT panel: Run hidden, Refresh removed, Clear path added (the gear with the parameters is kept) | The search starts when the Direct Manipulation marker is placed; the table refreshes itself | A usability request. The auto-start already exists (`__momotStartRun`, called by the marker click). Re-applies the relevant part of 3.10 to the friend's panel | **Implemented, compiles, not run** | Check in the app (section 3.13) |
+| 14 | Admin page: generation of every loaded candidate | Seeing how far into a search a loaded candidate appeared | A research request: `Loaded` was only a count | **Implemented, compiles, not run** | Rebuild Docker and check with a real session (section 3.14) |
 
 **Two honest remarks before the details**
 
@@ -30,13 +34,13 @@ Related documents: `Benchmark-Analysis.md` (every benchmark result and its limit
 - **Build:** `mvn clean compile` from the repository root.
 - **Run the game:** `mvn -pl blocky_game javafx:run` from the repository root.
 - **Never edit `src-gen/`.** Everything below avoids it on purpose: the overrides are in `blocky_custom.java` (hand-written), and the rule files are separate `.henshin` files. If a change ever needs a different metamodel, change `blocky.ecore` and ask for the code to be regenerated in Eclipse (see `AGENTS.md`).
-- **Switches are JVM system properties.** The Docker entrypoint sets them from environment variables (`BLOCKY_OBJECTIVES`, `BLOCKY_WRAP`) through `JAVA_TOOL_OPTIONS`. Outside Docker, set `JAVA_TOOL_OPTIONS="-Dblocky.objectives=GATED -Dblocky.rules.wrap=true"` before starting the game.
+- **Switches are JVM system properties, and everything is on by default.** A switch only turns a feature off (section 3.11). The Docker entrypoint passes `BLOCKY_OBJECTIVES` and `BLOCKY_WRAP` through `JAVA_TOOL_OPTIONS` only when they are set. Outside Docker, set for example `JAVA_TOOL_OPTIONS="-Dblocky.objectives=CURRENT -Dblocky.rules.wrap=false"` before starting the game to turn the improvements off.
 
 | Property | Values | Default in code | Read by |
 |---|---|---|---|
-| `blocky.objectives` | `CURRENT`, `GATED` | `CURRENT` | `blocky_custom.java` |
-| `blocky.rules.wrap` | `true`, `false` | `false` | `MomotFirstGoalBenchmarkRunner.withWrapMoves` (used by the game and the benchmark) |
-| `blocky.rules.editAnywhere` | `true`, `false` | `false` | `MomotFirstGoalBenchmarkRunner.withWrapMoves`, benchmark only (the game always uses `_edit_anywhere`) |
+| `blocky.objectives` | `GATED`, `CURRENT` | `GATED` (`CURRENT` turns the gate off) | `blocky_custom.java` |
+| `blocky.rules.wrap` | `true`, `false` | `true` (`false` turns wrap/unwrap off) | `MomotFirstGoalBenchmarkRunner.withWrapMoves` (used by the game and the benchmark) |
+| `blocky.rules.editAnywhere` | `true`, `false` | `true` (`false` keeps the module name as given) | `MomotFirstGoalBenchmarkRunner.withWrapMoves` |
 | `blocky.algorithm` | `NSGA_II`, `MEMETIC_NSGA_II` (game), `RANDOM_SEARCH`, `IMMIGRANTS_NSGA_II` (benchmarks) | `NSGA_II` | `blocky_custom.java` |
 
 ## 3. The improvements
@@ -88,9 +92,7 @@ protected double _createObjectiveHelper_3(final TransformationSolution solution,
 - `GoalReached` and `closestToGoal` are never gated.
 
 **How to do it.** Nothing to implement: it is in the file. What is left is the default.
-1. The code default is `CURRENT`. The Docker entrypoint already defaults to `GATED` (`entrypoint.sh`, `docker-compose.yml`). The game started with `mvn javafx:run` therefore runs the old objectives unless the property is set.
-2. Change the default in `gatedObjectives()` to `"GATED"` (one word), or set `JAVA_TOOL_OPTIONS` in the way the project documents running the app. Changing the code default is simpler and cannot be forgotten.
-3. The comment in `entrypoint.sh` still says `CURRENT (default)`; correct it to match.
+1. The code default is `GATED` (`gatedObjectives()` reads `System.getProperty("blocky.objectives", "GATED")`). `Main.java`, `SessionContext.java`, `entrypoint.sh` and `docker-compose.yml` no longer set it (section 3.11); `-Dblocky.objectives=CURRENT` turns the gate off.
 
 **How to check it works.**
 - Start a search with `-Dblocky.objectives=GATED`. In the log the objective list must read `[GoalReached, Edits, Actions, closestToGoal, Blocks]`.
@@ -147,7 +149,7 @@ protected double _createObjectiveHelper_3(final TransformationSolution solution,
 
 **How to regenerate.** `tools/henshin-prototype/run.sh wrap` writes `*_wrap.henshin` for the three originals and for the three `*_edit_anywhere` modules. Run `run.sh patch` first, because the wrap step reads the `_edit_anywhere` files. `tools/henshin-prototype/run.sh verify-wrap` applies the rules to small programs and checks the outcome (for example that `EditAnywhere` on `[F, Loop[L]]` produces inserts, wraps and unwraps). All checks must pass.
 
-**How to switch it on.** `-Dblocky.rules.wrap=true` (Docker: `BLOCKY_WRAP=true`, the default there). `MomotFirstGoalBenchmarkRunner.withWrapMoves` appends `_wrap` to the file name that the game or the benchmark chose. Switching it off, or deleting the `_wrap` files, restores the previous behaviour.
+**How to switch it off.** Wrap is on by default (section 3.11). `-Dblocky.rules.wrap=false` (Docker: `BLOCKY_WRAP=false`) restores the previous behaviour; `MomotFirstGoalBenchmarkRunner.withWrapMoves` appends `_wrap` to the file name that the game or the benchmark chose unless it is off.
 
 **What to do about the mismatch** (pick one and write the choice into this section):
 - **Ship `_edit_anywhere_wrap`** (the current game behaviour) and say in the release notes that the measured gain is for a related rule set. This is the cheapest option and matches the aim (repair needs delete and modify).
@@ -505,12 +507,92 @@ Stop alone does not change the id, so the finish callback of a stopped run still
 - Select a row: the status says `(double-click to load)` and the comparison path is drawn. Double-click it: the program loads into the game.
 - Press `Clear path`: the comparison path and the marker disappear from the maze.
 
+### 3.11 Gated objectives and the rule variants are on by default
+
+**Observation.** The improvements were opt-in. `Main.java` set `blocky.objectives=GATED` itself but never `blocky.rules.wrap`, so the desktop game ran `*_edit_anywhere` without wrap, while Docker (which set `BLOCKY_WRAP=true`) ran `*_edit_anywhere_wrap`. `SessionContext.java` and the benchmark script (`CURRENT`, `false`) had their own defaults too. The same game behaved differently depending on how it was started.
+
+**Change.** The code default is the full configuration; each switch only turns a part off.
+- `MomotFirstGoalBenchmarkRunner.withWrapMoves`: `blocky.rules.editAnywhere` and `blocky.rules.wrap` are on unless set to `false`. New helper `wrapMovesEnabled()`, also used by `MomotRunService`. Modules that have no generated variant (`atomic_only`, `no_loops`, `_uri`) are returned unchanged.
+- `blocky_custom.java`: `blocky.objectives` already defaulted to `GATED`.
+- `Main.java` and `SessionContext.java`: the `blocky.objectives=GATED` fallback is removed (redundant).
+- `entrypoint.sh`: passes `-Dblocky.objectives` and `-Dblocky.rules.wrap` only when `BLOCKY_OBJECTIVES` or `BLOCKY_WRAP` is non-empty. `docker-compose.yml` passes the two variables through without a default.
+- `run_first_goal_benchmark.sh`: defaults changed to `GATED` and `true`. **A benchmark run without variables now measures the shipped configuration, not the old baseline.** For the old baselines of `Benchmark-Analysis.md`, set `BLOCKY_OBJECTIVES=CURRENT BLOCKY_WRAP=false` and `-Dblocky.rules.editAnywhere=false`.
+- `AGENTS.md`: the property table is updated.
+
+**What it does not change.** `Main.java` still pins one `blocky.henshin` for every level, so `blocky.rules.levelSpecific` has no effect in the game and level 2 gets the full module (open decision).
+
+**How to check it works.** `mvn -q -o -pl blocky_game -am compile` passes. In the container log, the module is `statement_insertions_henshin_text_edit_anywhere_wrap.henshin` and the objective list is `[GoalReached, Edits, Actions, closestToGoal, Blocks]`, with no `BLOCKY_*` variable set. Not run yet.
+
+### 3.12 Admin page: time of one exploration iteration
+
+**Observation and assumption.** The admin page counted runs, searches, loaded solutions and direct manipulations per level, and listed `program_run` events with timestamps, but it gave no interval between two runs. The assumption of the study is that the time from the previous "Run Program" click to the current one is one exploration iteration; for the first run on a level it is the time from arriving at the level to the click.
+
+**Change.** Raw data per `program_run` event in `<session>/events.jsonl`, and statistics derived when reading:
+
+| Field | Meaning | Written by |
+|---|---|---|
+| `timestamp` (existing) | wall-clock time of the click | client |
+| `levelElapsedMs` | active time on the level at the click (the level timer, which counts only while the tab is visible, no modal is open, and ticks are under 5 s apart) | `levelTimer.js` `recordProgramRun` |
+| `levelArrivedAt` | wall-clock time of the first arrival at the level in this timer session (kept in `sessionStorage`) | `levelTimer.js` `getLevelArrivedAt` |
+| `iterationMs` | **active** interval: `levelElapsedMs` minus the previous run's on the same level; the first run: `levelElapsedMs` (arrival to click). A smaller value than before means a timer reset: measured from the reset. Absent if the previous run has no `levelElapsedMs` | `HttpSearchServer.appendSessionEvent` |
+| `wallIterationMs` | **wall-clock** interval: `timestamp` minus the previous run's `timestamp`; the first run: minus `levelArrivedAt` | `HttpSearchServer.appendSessionEvent` |
+
+- Per level, the admin JSON (`/api/admin/sessions` and the export) has the raw arrays `iterationsMs` and `wallIterationsMs` plus `iterationAvgMs`, `iterationMedianMs`, `wallIterationAvgMs`, `wallIterationMedianMs`. Mean and median are not stored. Minimum and maximum, planned for later, can be computed from the raw arrays without any migration.
+- The admin page shows, in the session modal, average, median and the raw list for active and for wall-clock time per level, and an "Iteration (active) / (wall-clock)" tag on every `program_run` card. The downloaded HTML reports (single and all sessions) show average and median.
+- Which of the two is the measure of an iteration is **not decided**. Active time excludes breaks and time on another tab; wall-clock includes them. Both are stored so the choice can be made on the data.
+
+**Limits.**
+- Sessions recorded before this change have no `levelElapsedMs`, `iterationMs` or `wallIterationMs`; the first run after such a run has no interval either.
+- `levelElapsedMs` comes from a timer that ticks every 500 ms, so it can lag the click by up to that.
+- Searches, loaded solutions and direct manipulations happen inside an interval; they are not boundaries.
+- If the browser sends no workspace XML, the `program_run` snapshot falls back to the stored solution of the level (existing behaviour), which can look like the answer rather than the user's program.
+
+**How to check it works.** `mvn -q -o -pl blocky_game -am compile` passes and `node --check levelTimer.js` accepts the file. The JS test `tests/levelTimerRunCapture.test.js` could not run here (`jsdom` is not installed). Not run in the app. In the app: play a level, click Run three times, open the session in the admin page; each `program_run` card must show both iteration tags, the first one equal to the time since arriving, and the level table must show average, median and the three raw values.
+
+### 3.13 MoMoT panel: hide Run, remove Refresh, add Clear path (gear kept)
+
+**Observation.** The search already starts when a Direct Manipulation marker is accepted: the marker click handler in `blockyUIOverlay.js` calls `window.__momotStartRun()` after refreshing the panel. The panel still showed a Run button that does the same thing, started from whatever target was last saved, so it gave a second, unclear way to start a search and a second way to inflate the `Searches` counter of the admin page.
+
+**Change.** `mRunBtn.style.display = 'none'` right after the button is created, in `blockyUIOverlay.js` (web) and in the injected script of `BlockyUI.java` (desktop). The button stays in the DOM because `__momotStartRun` is registered on it (`mRunBtn.addEventListener('click', window.__momotStartRun)`), so the auto-start is unchanged. `tests/blockyUIOverlay.test.js` now asserts that the Run button is hidden.
+
+**Refresh and Clear path (re-applies the Refresh/Clear path part of section 3.10 to this version of the panel).** The table already refreshes itself (live updates during a run, when a run ends, and after a Direct Manipulation click), and the double-click or click on a row loads it, so:
+- The **Refresh** button is removed (`__momotRefreshBtn`; `refresh()` and `window.__momotShowAndRefresh` stay, they are called automatically).
+- `refresh()` no longer clears the comparison path and the `dmgMarker` as a side effect. That was what a manual Refresh was used for, and it also wiped the marker on every automatic refresh.
+- A **Clear path** button (`__momotClearOverlayBtn`, next to Log) does that: `window.__dbgDrawComparisonPath([])` and removes `dmgMarker`.
+- There is no **Load** button in this version of the panel (a row loads on click), so nothing to remove there.
+- The **gear** with the parameter fields (Seed, Pop, Iter, Runs, SolLen) is kept as it is. This differs from section 3.7, which hid the parameters; the project owner decided to keep the gear.
+- Files: `blockyUIOverlay.js` (web) and the injected script in `BlockyUI.java` (desktop; it already had Clear path, only Refresh is removed). `tests/blockyUIOverlay.test.js` asserts that Refresh is gone and Clear path exists.
+
+**What it costs.** A user can no longer press Run to search again from the same target after Stop or after editing the program; the marker has to be placed again. Stop is unchanged. Without a Refresh button, a table that is out of date can only be refreshed by the next event (run end, marker click, page load).
+
+**How it was checked.** `node --check blockyUIOverlay.js` and `mvn -q -o -pl blocky_game -am compile` pass. The JS test was not run (`jsdom` is not installed here). The app was **not** run.
+
+**How to check it works in the app.** The panel header shows Stop, Log, Clear path, the gear and the close button; no Run and no Refresh. Click `Direct Manipulation`, then a path cell: the search starts and the progress shows. Stop works as before. Select a row (it loads and draws the comparison path), then press Clear path: the path and the marker disappear. The gear still opens the parameter fields.
+
+### 3.14 Admin page: generation of every loaded candidate
+
+**Observation.** `Loaded` counted the candidates a user loaded from the MoMoT panel but said nothing about them. The search already knows, for every candidate, the generation in which it first appeared (`generations.pf`, read by `MomotResultsService` into `SolutionEntry.generationToForm`); it was only not saved with the load.
+
+**Change (option A: record at load time).**
+- `HttpSearchServer.MomotLoadHandler`: when a candidate is loaded, the matching `SolutionEntry` gives `generation` and the search folder; both are written on the `candidate_exploration` event in `events.jsonl` as `generation` and `searchId` (the `run_<timestamp>_<n>` output folder, so the generation can be placed in its search; a user may start several searches on a level).
+- The admin JSON (`/api/admin/sessions` and the export) has `generation` and `searchId` on every event, and per level the raw list `loadedGenerations`, in load order.
+- The admin page shows `Loaded` as `3 (gen 25, 25, 40)` in the session modal and in the per-session download, a `Generation` tag on `candidate_exploration` cards, and `loaded gen …` under each level of the all-sessions HTML report.
+
+**What the number means.** The generation is `ceil(evaluations / population size)` at the moment the candidate's objective vector first appeared in the algorithm's best set. A low number was found early; the last generation (`maxEvaluations / population`) means it appeared only at the end of the budget. It is the generation within the search, not the position in the user's session.
+
+**Limits.**
+- **Which run is not recorded.** A search is several algorithm runs; the files do not say which run produced a candidate (`objectives_seed_N.pf` lists each run's own front, but non-goal archive candidates appear in none of them, and identical goal vectors appear in all). A per-candidate run index would need tagging at search time in `blocky_custom.java` (a `runs.pf` next to `generations.pf`). Not done.
+- **First sighting, shared across runs.** The listener keeps one map from objective vector to generation, so if several runs find the same vector, the value is the one of whichever run saw it first. It is unverified whether `ParetoFrontPublisherListener.resetTimer()` (called on the framework's `started` event) fires once per search or at the start of every run; in the second case the values of earlier runs would be lost. To verify, log the resets in a search with 3 runs.
+- Sessions recorded before this change have no generation; a candidate whose entry cannot be matched has none either (the field is absent, the list leaves it out).
+
+**How to check it works.** `mvn -q -o -pl blocky_game -am compile` passes and the scripts of `admin.html` parse. Not run in the app. In the app: start a search, load two or three candidates, open the session in the admin page: the level shows `Loaded n (gen …)`, each loaded card has a `Generation` tag, and `events.jsonl` has `generation` and `searchId` on the `candidate_exploration` lines.
+
 ## 4. Recommended defaults
 
 | Setting | Recommended | Why |
 |---|---|---|
-| `blocky.objectives` | `GATED` | Measured gain; the game outside Docker still defaults to `CURRENT` |
-| `blocky.rules.wrap` | `true` | Measured gain on levels 6, 7, 9; harmless elsewhere |
+| `blocky.objectives` | `GATED` | Measured gain; this is the default everywhere (section 3.11) |
+| `blocky.rules.wrap` | `true` (default) | Measured gain on levels 6, 7, 9; harmless elsewhere |
 | Rule files | `*_edit_anywhere` (game) | Needed for repair |
 | `closestToGoal` | the fixed version, always on | A bug fix with no switch |
 | `blocky.gate.slack` | unset (strict) | Not implemented; no search evidence |
@@ -535,7 +617,7 @@ Stop alone does not change the id, so the finish callback of a stopped run still
    - the `blocky.rules.wrap` and `blocky.rules.editAnywhere` switches (`MomotFirstGoalBenchmarkRunner.java`, `docker-compose.yml`, `entrypoint.sh`);
    - the benchmark algorithms and analysis tools (`RandomSearchNSGAII.java`, `RandomImmigrantsNSGAII.java`, `LandscapeAnalysis.java`, `run_first_goal_benchmark.sh`);
    - the documents (`Benchmark-Analysis.md`, `Landscape-Analysis.md`, `Exploration-Proposal.md`, this file) and the benchmark CSVs.
-2. **Set the defaults** of section 4 and fix the stale comment in `entrypoint.sh`.
+2. **Defaults** of section 4: done in code (section 3.11).
 3. **Close the `.henshin_text` gap** (section 3.3).
 4. **Implement the relaxed gate** behind `blocky.gate.slack` (section 3.5), off by default.
 5. **Show non-goal candidates** (section 3.6). Do change A (the panel) first: it is small, safe and gives the user the behaviour under the original objectives. Do change B (the archive) after the defaults of step 2 are set, because it is only needed once gating is on.
@@ -548,7 +630,9 @@ Stop alone does not change the id, so the finish callback of a stopped run still
 - [ ] `tools/henshin-prototype/run.sh verify` and `run.sh verify-wrap` pass.
 - [ ] A one-run search on level 6 shows varying `closestToGoal` values in `objectives.pf` (not all 100000).
 - [ ] With `GATED`, non-goal candidates show 100000 in `Edits`, `Actions` and `Blocks`.
-- [ ] The game started with `mvn -pl blocky_game javafx:run` runs with `GATED` and wrap on, without extra flags.
+- [ ] The game started with `mvn -pl blocky_game javafx:run` runs with `GATED` and wrap on, without extra flags (section 3.11).
+- [ ] The admin page shows the active and wall-clock iteration times of a played level (section 3.12).
+- [ ] The admin page shows the generation of every loaded candidate (section 3.14).
 - [ ] In the game, a program with one wrong block can be repaired by the search.
 - [ ] The solution panel lists candidates that do not reach the goal, with and without a solution present, and no checkbox hides them.
 - [ ] With `GATED`, non-goal candidates remain listed after a solution is found (archive of section 3.6, change B).

@@ -8,8 +8,10 @@ services:
     entrypoint: /bin/bash ./entrypoint.sh
     environment:
       - LIBGL_ALWAYS_SOFTWARE=1
-      - BLOCKY_OBJECTIVES=${BLOCKY_OBJECTIVES:-GATED}
-      - BLOCKY_WRAP=${BLOCKY_WRAP:-true}
+      # Gated objectives and the wrap rules are on by default; set these only to turn them off
+      # (BLOCKY_OBJECTIVES=CURRENT, BLOCKY_WRAP=false). Unset means default.
+      - BLOCKY_OBJECTIVES
+      - BLOCKY_WRAP
       - BLOCKY_ADMIN_PASSWORD=${BLOCKY_ADMIN_PASSWORD:-}
     ports:
       - "6080:6080"

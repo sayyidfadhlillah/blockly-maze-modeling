@@ -3,10 +3,14 @@ set -e
 
 # Setup JVM flags
 export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.xml/com.sun.org.apache.xerces.internal.jaxp=ALL-UNNAMED --add-exports=java.xml/com.sun.org.apache.xerces.internal.jaxp=ALL-UNNAMED -Djava.util.Arrays.useLegacyMergeSort=true"
-# BLOCKY_OBJECTIVES: GATED (default; Edits, Actions and Blocks only count for candidates that reach the goal) or CURRENT
-export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dblocky.objectives=${BLOCKY_OBJECTIVES:-GATED}"
-# BLOCKY_WRAP: true (default) or false (true = use the *_wrap.henshin rule files with wrap/unwrap moves)
-export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dblocky.rules.wrap=${BLOCKY_WRAP:-true}"
+# Gated objectives and the edit/delete/modify + wrap/unwrap rules are the defaults in the code.
+# Optional switches that turn them off: BLOCKY_OBJECTIVES=CURRENT, BLOCKY_WRAP=false
+if [ -n "$BLOCKY_OBJECTIVES" ]; then
+    export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dblocky.objectives=$BLOCKY_OBJECTIVES"
+fi
+if [ -n "$BLOCKY_WRAP" ]; then
+    export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dblocky.rules.wrap=$BLOCKY_WRAP"
+fi
 export MAVEN_OPTS="$JAVA_TOOL_OPTIONS"
 
 # Always start virtual Xvfb display so JavaFX components run headlessly without DISPLAY errors

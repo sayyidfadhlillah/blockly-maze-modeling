@@ -26,9 +26,8 @@ public class Main {
         if (System.getProperty("prism.primtextures") == null) {
             System.setProperty("prism.primtextures", "false");
         }
-        if (System.getProperty("blocky.objectives") == null) {
-            System.setProperty("blocky.objectives", "GATED");
-        }
+        // Gated objectives (blocky_custom) and the edit-anywhere + wrap rules (defaultHenshinModule) are the defaults;
+        // -Dblocky.objectives=CURRENT, -Dblocky.rules.wrap=false and -Dblocky.rules.editAnywhere=false turn them off.
         if (System.getProperty("blocky.henshin") == null) {
             String defaultModule = MomotFirstGoalBenchmarkRunner.defaultHenshinModule();
             String henshinPath = MomotRunService.firstExisting(

@@ -642,10 +642,20 @@ public class HttpSearchServer {
                 if (timerSid != null) {
                     String modelName = modelPath != null ? new File(modelPath).getName() : "solution.xmi";
                     String objectiveLine = "";
+                    Integer generation = null;
+                    String searchId = null;
                     for (MomotResultsService.SolutionEntry e : session.listMomotSolutions()) {
                         if (modelPath != null && (modelPath.equals(e.modelPath) || (e.modelPath != null && modelName.equals(new File(e.modelPath).getName())))) {
                             if (e.objectiveLine != null) {
                                 objectiveLine = e.objectiveLine;
+                                // generation in which the objective vector of this candidate first appeared (generations.pf)
+                                generation = e.generationToForm;
+                                if (e.outputDir != null) {
+                                    File outDir = new File(e.outputDir);
+                                    // <session>/run_<timestamp>_<n>/output: the search is the run_... folder
+                                    searchId = "output".equals(outDir.getName()) && outDir.getParentFile() != null
+                                            ? outDir.getParentFile().getName() : outDir.getName();
+                                }
                                 break;
                             }
                         }
@@ -662,7 +672,8 @@ public class HttpSearchServer {
                     if (variant == null || variant.trim().isEmpty()) {
                         variant = "momot";
                     }
-                    appendSessionEvent(timerSid, "candidate_exploration", variant, timerLevelId, modelName, xml, modelPath, objectiveLine, timestamp);
+                    appendSessionEvent(timerSid, "candidate_exploration", variant, timerLevelId, modelName, xml, modelPath, objectiveLine, timestamp,
+                            -1L, null, generation, searchId);
                 }
             }
             int[][] grid = (level != null && level.getMap() != null) ? engine.buildGridForWebView(level.getMap()) : new int[0][0];
@@ -858,7 +869,9 @@ public class HttpSearchServer {
                             xml = session.getEngine().solutionToBlocklyXml(curLvl);
                         }
                     }
-                    appendSessionEvent(timerSid, "program_run", variant, levelId, "workspace", xml, null, null, timestamp);
+                    long levelElapsedMs = parseJsonLongField(body, "levelElapsedMs", -1L);
+                    String levelArrivedAt = parseJsonField(body, "levelArrivedAt");
+                    appendSessionEvent(timerSid, "program_run", variant, levelId, "workspace", xml, null, null, timestamp, levelElapsedMs, levelArrivedAt);
                 }
 
                 List<String> logs = session.getEngine().simulateUserProgramWithLogs();
@@ -1058,6 +1071,28 @@ public class HttpSearchServer {
     private static void appendSessionEvent(String timerSessionId, String type, String variant, int levelId,
                                            String modelName, String xml, String modelPath, String objectiveLine,
                                            String timestamp) {
+        appendSessionEvent(timerSessionId, type, variant, levelId, modelName, xml, modelPath, objectiveLine, timestamp, -1L, null, null, null);
+    }
+
+    private static void appendSessionEvent(String timerSessionId, String type, String variant, int levelId,
+                                           String modelName, String xml, String modelPath, String objectiveLine,
+                                           String timestamp, long levelElapsedMs, String levelArrivedAt) {
+        appendSessionEvent(timerSessionId, type, variant, levelId, modelName, xml, modelPath, objectiveLine, timestamp,
+                levelElapsedMs, levelArrivedAt, null, null);
+    }
+
+    /**
+     * levelElapsedMs is the active time on the level at this event (-1 = unknown). For a program_run it is stored
+     * together with iterationMs, the interval to the previous program_run on the same level (for the first run on
+     * the level: the active time since arrival). Both are raw data; mean and median are computed when reading.
+     * For a candidate_exploration, generation is the generation in which the loaded candidate's objective vector
+     * first appeared (generations.pf of the search) and searchId is the search's output folder (run_...), so
+     * the generation can be placed in its search; both are null when unknown.
+     */
+    private static void appendSessionEvent(String timerSessionId, String type, String variant, int levelId,
+                                           String modelName, String xml, String modelPath, String objectiveLine,
+                                           String timestamp, long levelElapsedMs, String levelArrivedAt,
+                                           Integer generation, String searchId) {
         if (timerSessionId == null || !timerSessionId.matches("^[a-zA-Z0-9_-]{1,128}$")) {
             return;
         }
@@ -1081,12 +1116,44 @@ public class HttpSearchServer {
                 }
                 File eventsFile = new File(sessionDir, "events.jsonl");
                 int eventIndex = 1;
+                boolean isRun = "program_run".equals(type);
+                boolean hadPreviousRun = false;
+                long previousElapsed = -1L;
+                String previousTimestamp = null;
                 if (eventsFile.exists()) {
                     try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(eventsFile), StandardCharsets.UTF_8))) {
-                        while (r.readLine() != null) {
+                        String existing;
+                        while ((existing = r.readLine()) != null) {
                             eventIndex++;
+                            if (isRun && "program_run".equals(parseJsonField(existing, "type"))
+                                    && parseJsonIntField(existing, "level", 0) == levelId) {
+                                hadPreviousRun = true;
+                                previousElapsed = parseJsonLongField(existing, "levelElapsedMs", -1L);
+                                previousTimestamp = parseJsonField(existing, "timestamp");
+                            }
                         }
                     }
+                }
+                long iterationMs = -1L;
+                if (isRun && levelElapsedMs >= 0) {
+                    if (!hadPreviousRun) {
+                        iterationMs = levelElapsedMs;
+                    } else if (previousElapsed >= 0) {
+                        // a smaller value means the level timer was reset: measure from the reset
+                        iterationMs = levelElapsedMs >= previousElapsed ? levelElapsedMs - previousElapsed : levelElapsedMs;
+                    }
+                }
+                // wall-clock interval from the client timestamps: to the previous run, or to the arrival at the level
+                long wallIterationMs = -1L;
+                if (isRun) {
+                    String reference = hadPreviousRun ? previousTimestamp : levelArrivedAt;
+                    try {
+                        if (reference != null && !reference.trim().isEmpty()) {
+                            long diff = java.time.Duration.between(java.time.Instant.parse(reference.trim()),
+                                    java.time.Instant.parse(timestamp.trim())).toMillis();
+                            wallIterationMs = Math.max(0L, diff);
+                        }
+                    } catch (Exception ignored) {}
                 }
                 String eventId = String.valueOf(eventIndex);
                 String modelFile = "models/" + eventId + ".xml";
@@ -1121,6 +1188,24 @@ public class HttpSearchServer {
                 }
                 if (objectiveLine != null) {
                     jsonLine.append(",\"objectiveLine\":\"").append(escapeJson(objectiveLine)).append("\"");
+                }
+                if (isRun && levelElapsedMs >= 0) {
+                    jsonLine.append(",\"levelElapsedMs\":").append(levelElapsedMs);
+                }
+                if (iterationMs >= 0) {
+                    jsonLine.append(",\"iterationMs\":").append(iterationMs);
+                }
+                if (wallIterationMs >= 0) {
+                    jsonLine.append(",\"wallIterationMs\":").append(wallIterationMs);
+                }
+                if (generation != null && generation >= 0) {
+                    jsonLine.append(",\"generation\":").append(generation);
+                }
+                if (searchId != null && !searchId.trim().isEmpty()) {
+                    jsonLine.append(",\"searchId\":\"").append(escapeJson(searchId.trim())).append("\"");
+                }
+                if (isRun && levelArrivedAt != null && !levelArrivedAt.trim().isEmpty()) {
+                    jsonLine.append(",\"levelArrivedAt\":\"").append(escapeJson(levelArrivedAt.trim())).append("\"");
                 }
                 jsonLine.append("}\n");
 
@@ -1383,6 +1468,94 @@ public class HttpSearchServer {
         String modelPath;
         String objectiveLine;
         String xml = "";
+        /** Active time on the level (ms) when the run was clicked; -1 if not recorded. program_run only. */
+        long levelElapsedMs = -1;
+        /** Time since the previous run on the same level, or since arrival for the first run; -1 if unknown. */
+        long iterationMs = -1;
+        /** ISO time the user first arrived at the level in this session (wall-clock); null if not recorded. */
+        String levelArrivedAt;
+        /** Wall-clock interval: this run's timestamp minus the previous run's (or levelArrivedAt); -1 if unknown. */
+        long wallIterationMs = -1;
+        /** candidate_exploration only: generation in which the loaded candidate first appeared; -1 if unknown. */
+        int generation = -1;
+        /** candidate_exploration only: the search (output folder) the candidate came from; null if unknown. */
+        String searchId;
+    }
+
+    /** Generations of the candidates loaded on one level, in load order (unknown ones are left out). */
+    private static List<Integer> loadedGenerations(List<SessionEvent> events, int level) {
+        List<Integer> out = new ArrayList<>();
+        if (events == null) return out;
+        for (SessionEvent ev : events) {
+            if ("candidate_exploration".equals(ev.type) && ev.level == level && ev.generation >= 0) {
+                out.add(ev.generation);
+            }
+        }
+        return out;
+    }
+
+    /** JSON member (no braces): the raw list of generations of the loaded candidates of one level. */
+    private static String loadedGenerationsJson(List<SessionEvent> events, int level) {
+        List<Integer> gens = loadedGenerations(events, level);
+        StringBuilder sb = new StringBuilder("\"loadedGenerations\":[");
+        for (int i = 0; i < gens.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append(gens.get(i));
+        }
+        return sb.append("]").toString();
+    }
+
+    private static String numOrNull(long v) {
+        return v >= 0 ? String.valueOf(v) : "null";
+    }
+
+    /** Raw iteration intervals (ms) of one level, in run order: active time, or wall-clock time if wall is true. */
+    private static List<Long> levelIterations(List<SessionEvent> events, int level, boolean wall) {
+        List<Long> out = new ArrayList<>();
+        if (events == null) return out;
+        for (SessionEvent ev : events) {
+            long v = wall ? ev.wallIterationMs : ev.iterationMs;
+            if ("program_run".equals(ev.type) && ev.level == level && v >= 0) {
+                out.add(v);
+            }
+        }
+        return out;
+    }
+
+    private static long meanOf(List<Long> values) {
+        long sum = 0;
+        for (long v : values) sum += v;
+        return Math.round((double) sum / values.size());
+    }
+
+    private static long medianOf(List<Long> values) {
+        List<Long> sorted = new ArrayList<>(values);
+        Collections.sort(sorted);
+        int n = sorted.size();
+        if (n % 2 == 1) return sorted.get(n / 2);
+        return Math.round((sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2.0);
+    }
+
+    private static String statsMembers(String prefix, List<Long> its) {
+        StringBuilder sb = new StringBuilder("\"").append(prefix).append("sMs\":[");
+        for (int i = 0; i < its.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append(its.get(i));
+        }
+        sb.append("],\"").append(prefix).append("AvgMs\":").append(its.isEmpty() ? "null" : String.valueOf(meanOf(its)));
+        sb.append(",\"").append(prefix).append("MedianMs\":").append(its.isEmpty() ? "null" : String.valueOf(medianOf(its)));
+        return sb.toString();
+    }
+
+    /**
+     * JSON members (no braces) for one level, for active time (iterationsMs, iterationAvgMs, iterationMedianMs) and
+     * wall-clock time (wallIterationsMs, wallIterationAvgMs, wallIterationMedianMs). The raw arrays are the data;
+     * mean and median are derived, so min/max etc. can be computed from the arrays later.
+     */
+    private static String iterationStatsJson(List<SessionEvent> events, int level) {
+        return statsMembers("iteration", levelIterations(events, level, false)) + ","
+                + statsMembers("wallIteration", levelIterations(events, level, true)) + ","
+                + loadedGenerationsJson(events, level);
     }
 
     private static class AdminSessionSummary {
@@ -1421,6 +1594,12 @@ public class HttpSearchServer {
                 evt.modelFile = parseJsonField(line, "modelFile");
                 evt.modelPath = parseJsonField(line, "modelPath");
                 evt.objectiveLine = parseJsonField(line, "objectiveLine");
+                evt.levelElapsedMs = parseJsonLongField(line, "levelElapsedMs", -1L);
+                evt.iterationMs = parseJsonLongField(line, "iterationMs", -1L);
+                evt.levelArrivedAt = parseJsonField(line, "levelArrivedAt");
+                evt.wallIterationMs = parseJsonLongField(line, "wallIterationMs", -1L);
+                evt.generation = parseJsonIntField(line, "generation", -1);
+                evt.searchId = parseJsonField(line, "searchId");
 
                 if (evt.modelFile != null && !evt.modelFile.trim().isEmpty()) {
                     File xmlFile = new File(sessionDir, evt.modelFile.trim());
@@ -1628,6 +1807,27 @@ public class HttpSearchServer {
                               .append(" D:").append(rec.directManipulations)
                               .append("</small>");
                         }
+                        List<Integer> loadedGens = loadedGenerations(s.events, l);
+                        if (!loadedGens.isEmpty()) {
+                            sb.append("<br><small style=\"color:#57606a;\">loaded gen ");
+                            for (int gi = 0; gi < loadedGens.size(); gi++) {
+                                if (gi > 0) sb.append(", ");
+                                sb.append(loadedGens.get(gi));
+                            }
+                            sb.append("</small>");
+                        }
+                        List<Long> its = levelIterations(s.events, l, false);
+                        if (!its.isEmpty()) {
+                            sb.append("<br><small style=\"color:#57606a;\">active avg ").append(formatTimeSecOrMs(meanOf(its)))
+                              .append(" med ").append(formatTimeSecOrMs(medianOf(its)))
+                              .append(" (n=").append(its.size()).append(")</small>");
+                        }
+                        List<Long> wall = levelIterations(s.events, l, true);
+                        if (!wall.isEmpty()) {
+                            sb.append("<br><small style=\"color:#57606a;\">wall avg ").append(formatTimeSecOrMs(meanOf(wall)))
+                              .append(" med ").append(formatTimeSecOrMs(medianOf(wall)))
+                              .append(" (n=").append(wall.size()).append(")</small>");
+                        }
                         sb.append("</td>\n");
                     } else {
                         sb.append("  <td style=\"color:#8c959f;\">-</td>\n");
@@ -1657,6 +1857,15 @@ public class HttpSearchServer {
                 sb.append("      <span><strong>Level:</strong> ").append(ev.level).append("</span>\n");
                 sb.append("      <span><strong>Variant:</strong> ").append(escapeHtml(ev.variant != null ? ev.variant : "-")).append("</span>\n");
                 sb.append("      <span><strong>Time:</strong> ").append(escapeHtml(ev.timestamp != null ? ev.timestamp : "-")).append("</span>\n");
+                if (ev.iterationMs >= 0) {
+                    sb.append("      <span><strong>Iteration (active):</strong> ").append(String.format("%.1f", ev.iterationMs / 1000.0)).append(" s</span>\n");
+                }
+                if (ev.wallIterationMs >= 0) {
+                    sb.append("      <span><strong>Iteration (wall-clock):</strong> ").append(String.format("%.1f", ev.wallIterationMs / 1000.0)).append(" s</span>\n");
+                }
+                if (ev.generation >= 0) {
+                    sb.append("      <span><strong>Generation:</strong> ").append(ev.generation).append("</span>\n");
+                }
                 if (ev.modelName != null && !ev.modelName.isEmpty()) {
                     sb.append("      <span><strong>Model:</strong> ").append(escapeHtml(ev.modelName)).append("</span>\n");
                 }
@@ -1774,7 +1983,8 @@ public class HttpSearchServer {
                           .append("\"programRuns\":").append(entry.getValue().programRuns).append(",")
                           .append("\"momotSearches\":").append(entry.getValue().momotSearches).append(",")
                           .append("\"solutionsLoaded\":").append(entry.getValue().solutionsLoaded).append(",")
-                          .append("\"directManipulations\":").append(entry.getValue().directManipulations)
+                          .append("\"directManipulations\":").append(entry.getValue().directManipulations).append(",")
+                          .append(iterationStatsJson(s.events, entry.getKey()))
                           .append("}");
                     }
                     sb.append("},\"events\":[");
@@ -1790,6 +2000,12 @@ public class HttpSearchServer {
                           .append("\"modelFile\":\"").append(escapeJson(ev.modelFile != null ? ev.modelFile : "")).append("\",")
                           .append("\"modelPath\":\"").append(escapeJson(ev.modelPath != null ? ev.modelPath : "")).append("\",")
                           .append("\"objectiveLine\":\"").append(escapeJson(ev.objectiveLine != null ? ev.objectiveLine : "")).append("\",")
+                          .append("\"levelElapsedMs\":").append(numOrNull(ev.levelElapsedMs)).append(",")
+                          .append("\"iterationMs\":").append(numOrNull(ev.iterationMs)).append(",")
+                          .append("\"wallIterationMs\":").append(numOrNull(ev.wallIterationMs)).append(",")
+                          .append("\"generation\":").append(numOrNull(ev.generation)).append(",")
+                          .append("\"searchId\":\"").append(escapeJson(ev.searchId != null ? ev.searchId : "")).append("\",")
+                          .append("\"levelArrivedAt\":\"").append(escapeJson(ev.levelArrivedAt != null ? ev.levelArrivedAt : "")).append("\",")
                           .append("\"xml\":").append(ev.xml != null ? "\"" + escapeJson(ev.xml) + "\"" : "\"\"")
                           .append("}");
                     }
@@ -1866,7 +2082,8 @@ public class HttpSearchServer {
                               .append("        \"programRuns\": ").append(entry.getValue().programRuns).append(",\n")
                               .append("        \"momotSearches\": ").append(entry.getValue().momotSearches).append(",\n")
                               .append("        \"solutionsLoaded\": ").append(entry.getValue().solutionsLoaded).append(",\n")
-                              .append("        \"directManipulations\": ").append(entry.getValue().directManipulations).append("\n")
+                              .append("        \"directManipulations\": ").append(entry.getValue().directManipulations).append(",\n")
+                              .append("        ").append(iterationStatsJson(s.events, entry.getKey())).append("\n")
                               .append("      }");
                         }
                         if (!firstLvl) sb.append("\n    ");
@@ -1883,6 +2100,12 @@ public class HttpSearchServer {
                               .append("        \"modelFile\": \"").append(escapeJson(ev.modelFile != null ? ev.modelFile : "")).append("\",\n")
                               .append("        \"modelPath\": \"").append(escapeJson(ev.modelPath != null ? ev.modelPath : "")).append("\",\n")
                               .append("        \"objectiveLine\": \"").append(escapeJson(ev.objectiveLine != null ? ev.objectiveLine : "")).append("\",\n")
+                              .append("        \"levelElapsedMs\": ").append(numOrNull(ev.levelElapsedMs)).append(",\n")
+                              .append("        \"iterationMs\": ").append(numOrNull(ev.iterationMs)).append(",\n")
+                              .append("        \"wallIterationMs\": ").append(numOrNull(ev.wallIterationMs)).append(",\n")
+                              .append("        \"generation\": ").append(numOrNull(ev.generation)).append(",\n")
+                              .append("        \"searchId\": \"").append(escapeJson(ev.searchId != null ? ev.searchId : "")).append("\",\n")
+                              .append("        \"levelArrivedAt\": \"").append(escapeJson(ev.levelArrivedAt != null ? ev.levelArrivedAt : "")).append("\",\n")
                               .append("        \"xml\": ").append(ev.xml != null ? "\"" + escapeJson(ev.xml) + "\"" : "\"\"").append("\n")
                               .append("      }");
                         }

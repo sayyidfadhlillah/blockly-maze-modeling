@@ -32,18 +32,18 @@ This repository contains **Blocky Maze**, a Java/JavaFX application integrating 
 - `statement_insertions_*_edit_anywhere.henshin`, `*_wrap.henshin` and `*_edit_anywhere_wrap.henshin` are **generated** by `tools/henshin-prototype/run.sh` from the original `.henshin` files, which are left untouched. They have **no `.henshin_text` source**: never recompile them from text and never edit them by hand, regenerate them.
 - `run.sh patch` writes `*_edit_anywhere` (insert + delete + modify of user-placed blocks, as one search move `EditAnywhere`). `run.sh wrap` writes `*_wrap` and `*_edit_anywhere_wrap` (adds wrap/unwrap moves); run `patch` first, because `wrap` reads the `*_edit_anywhere` files.
 - After regenerating, run `run.sh verify` and `run.sh verify-wrap`; both must end with `ALL CHECKS PASSED`.
-- The game always loads the `*_edit_anywhere` module for the level. `-Dblocky.rules.wrap=true` switches it to the `*_wrap` variant (`MomotFirstGoalBenchmarkRunner.withWrapMoves`).
+- The game loads the `*_edit_anywhere_wrap` module by default (`MomotFirstGoalBenchmarkRunner.withWrapMoves`). The switches only turn parts off: `-Dblocky.rules.wrap=false` drops the wrap/unwrap moves, `-Dblocky.rules.editAnywhere=false` keeps the original module name. There is no variant for `atomic_only`, `no_loops` and `_uri`.
 - If a module has a unit named `EditAnywhere`, `blocky_custom.createModuleManager` makes it the **only** search move (all other units are removed).
 
 ### Search objectives and switches
 - The search objectives are overridden in `blocky_momot/src/blocky_momot_runner/blocky_custom.java`, not in `src-gen`: `closestToGoal` is computed per evaluation (the generated version read `Cell.distanceToGoal`, which was only set for one input and returned the constant 100000 for other levels), and `Edits`, `Actions` and `Blocks` are **gated** (only counted for candidates that reach the goal).
-- JVM system properties (the Docker entrypoint sets the first two from `BLOCKY_OBJECTIVES` and `BLOCKY_WRAP`, defaults `GATED` and `true`):
+- JVM system properties. Everything is on by default; a property only switches a feature off (the Docker entrypoint and the benchmark script pass `BLOCKY_OBJECTIVES` and `BLOCKY_WRAP`, defaults `GATED` and `true`):
 
 | Property | Values (default) | Meaning |
 |---|---|---|
-| `blocky.objectives` | `GATED` (default), `CURRENT` | gated or original objectives |
-| `blocky.rules.wrap` | `true`, `false` (default in code) | use the `*_wrap` rule variants |
-| `blocky.rules.editAnywhere` | `true`, `false` | benchmark runner only: use `*_edit_anywhere` |
+| `blocky.objectives` | `GATED` (default), `CURRENT` | `CURRENT` turns the gate off (original objectives) |
+| `blocky.rules.wrap` | `true` (default), `false` | `false` turns the `*_wrap` rule variants (wrap/unwrap) off |
+| `blocky.rules.editAnywhere` | `true` (default), `false` | `false` turns the `*_edit_anywhere` variant (insert, delete, modify) off for base module names |
 | `blocky.algorithm` | `NSGA_II` (default), `MEMETIC_NSGA_II`; benchmarks: `RANDOM_SEARCH`, `IMMIGRANTS_NSGA_II` | search algorithm |
 | `blocky.nonGoalArchive` | integer, `0` in code, `10` set by `Main.java` | number of non-goal candidates kept for the solution panel (0 = off) |
 

@@ -420,17 +420,30 @@ public final class MomotFirstGoalBenchmarkRunner {
         return withWrapMoves("statement_insertions_henshin_text_edit_anywhere.henshin");
     }
 
+    /** A rule-set switch is on unless it is explicitly set to "false" (the switches only turn features off). */
+    private static boolean switchOn(String property) {
+        return !"false".equalsIgnoreCase(System.getProperty(property));
+    }
+
+    /** True unless -Dblocky.rules.wrap=false: the wrap/unwrap moves are part of the rule set. */
+    public static boolean wrapMovesEnabled() {
+        return switchOn("blocky.rules.wrap");
+    }
+
     /**
-     * PROTOTYPE: with -Dblocky.rules.wrap=true the *_wrap.henshin variant is used (same rules plus wrap/unwrap
-     * moves, built by tools/henshin-prototype/run.sh wrap). There is none for atomic_only.
+     * Picks the rule variant for a base module file name. On by default; each switch only turns its part off:
+     * -Dblocky.rules.editAnywhere=false keeps the file as given (no combined insert/delete/modify move) and
+     * -Dblocky.rules.wrap=false drops the *_wrap variant (wrap/unwrap moves, built by tools/henshin-prototype/run.sh wrap).
+     * There is no variant for atomic_only, no_loops and the _uri module.
      */
     public static String withWrapMoves(String henshinFile) {
-        // blocky.rules.editAnywhere=true: the *_edit_anywhere variant (insert, delete, modify as one move), so
-        // that wrap off and wrap on differ only in the wrap/unwrap moves
-        if (Boolean.getBoolean("blocky.rules.editAnywhere") && !henshinFile.contains("atomic_only") && !henshinFile.contains("edit_anywhere")) {
+        if (henshinFile.contains("atomic_only") || henshinFile.contains("no_loops") || henshinFile.contains("_uri")) {
+            return henshinFile;
+        }
+        if (switchOn("blocky.rules.editAnywhere") && !henshinFile.contains("edit_anywhere")) {
             henshinFile = henshinFile.replaceFirst("\\.henshin$", "_edit_anywhere.henshin");
         }
-        if (!Boolean.getBoolean("blocky.rules.wrap") || henshinFile.contains("atomic_only") || henshinFile.contains("_wrap")) {
+        if (!wrapMovesEnabled() || henshinFile.contains("_wrap")) {
             return henshinFile;
         }
         return henshinFile.replaceFirst("\\.henshin$", "_wrap.henshin");

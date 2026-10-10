@@ -453,6 +453,12 @@
             <th>DM</th>
             <th>Variant</th>
             <th>Last Updated</th>
+            <th>Active iter. avg</th>
+            <th>Active iter. median</th>
+            <th>Active iterations (raw)</th>
+            <th>Wall-clock iter. avg</th>
+            <th>Wall-clock iter. median</th>
+            <th>Wall-clock iterations (raw)</th>
           </tr>
         </thead>
         <tbody id="modalLevelsBody"></tbody>
@@ -651,10 +657,20 @@
           var runs = rec && typeof rec.programRuns === 'number' ? rec.programRuns : 0;
           var searches = rec && typeof rec.momotSearches === 'number' ? rec.momotSearches : 0;
           var loaded = rec && typeof rec.solutionsLoaded === 'number' ? rec.solutionsLoaded : 0;
+          var loadedGens = rec && rec.loadedGenerations ? rec.loadedGenerations : [];
+          var loadedStr = loaded + (loadedGens.length ? ' (gen ' + loadedGens.join(', ') + ')' : '');
           var dms = rec && typeof rec.directManipulations === 'number' ? rec.directManipulations : 0;
           var varStr = rec && (rec.elapsedMs > 0 || runs > 0 || searches > 0 || loaded > 0 || dms > 0) ? (rec.variant || 'momot') : '-';
           var updStr = rec && rec.updatedAt ? rec.updatedAt.replace('T', ' ').substring(0, 19) : '-';
-          rows += '<tr><td>Level ' + l + '</td><td>' + timeStr + '</td><td>' + runs + '</td><td>' + searches + '</td><td>' + loaded + '</td><td>' + dms + '</td><td>' + varStr + '</td><td>' + updStr + '</td></tr>';
+          var its = rec && rec.iterationsMs ? rec.iterationsMs : [];
+          var avgStr = its.length ? formatTime(rec.iterationAvgMs) : '-';
+          var medStr = its.length ? formatTime(rec.iterationMedianMs) : '-';
+          var rawStr = its.length ? its.map(function(ms) { return (ms / 1000).toFixed(1); }).join(', ') + ' s' : '-';
+          var wits = rec && rec.wallIterationsMs ? rec.wallIterationsMs : [];
+          var wAvgStr = wits.length ? formatTime(rec.wallIterationAvgMs) : '-';
+          var wMedStr = wits.length ? formatTime(rec.wallIterationMedianMs) : '-';
+          var wRawStr = wits.length ? wits.map(function(ms) { return (ms / 1000).toFixed(1); }).join(', ') + ' s' : '-';
+          rows += '<tr><td>Level ' + l + '</td><td>' + timeStr + '</td><td>' + runs + '</td><td>' + searches + '</td><td>' + loadedStr + '</td><td>' + dms + '</td><td>' + varStr + '</td><td>' + updStr + '</td><td>' + avgStr + '</td><td>' + medStr + '</td><td>' + rawStr + '</td><td>' + wAvgStr + '</td><td>' + wMedStr + '</td><td>' + wRawStr + '</td></tr>';
         }
         tbody.innerHTML = rows;
 
@@ -672,6 +688,15 @@
             evHtml += '    <span><strong>Level ' + ev.level + '</strong></span>';
             evHtml += '    <span>' + escapeHtml(ev.variant || '-') + '</span>';
             evHtml += '    <span>' + escapeHtml(ev.timestamp || '-') + '</span>';
+            if (typeof ev.iterationMs === 'number') {
+              evHtml += '    <span><strong>Iteration (active):</strong> ' + (ev.iterationMs / 1000).toFixed(1) + ' s</span>';
+            }
+            if (typeof ev.generation === 'number') {
+              evHtml += '    <span><strong>Generation:</strong> ' + ev.generation + '</span>';
+            }
+            if (typeof ev.wallIterationMs === 'number') {
+              evHtml += '    <span><strong>Iteration (wall-clock):</strong> ' + (ev.wallIterationMs / 1000).toFixed(1) + ' s</span>';
+            }
             if (ev.modelName) {
               evHtml += '    <span><strong>Model:</strong> ' + escapeHtml(ev.modelName) + '</span>';
             }
@@ -749,9 +774,17 @@
           var runs = rec && typeof rec.programRuns === 'number' ? rec.programRuns : 0;
           var searches = rec && typeof rec.momotSearches === 'number' ? rec.momotSearches : 0;
           var loaded = rec && typeof rec.solutionsLoaded === 'number' ? rec.solutionsLoaded : 0;
+          var loadedGens = rec && rec.loadedGenerations ? rec.loadedGenerations : [];
+          var loadedStr = loaded + (loadedGens.length ? ' (gen ' + loadedGens.join(', ') + ')' : '');
           var dms = rec && typeof rec.directManipulations === 'number' ? rec.directManipulations : 0;
           var varStr = rec && (rec.elapsedMs > 0 || runs > 0 || searches > 0 || loaded > 0 || dms > 0) ? (rec.variant || 'momot') : '-';
-          rows += '<tr><td>Level ' + l + '</td><td>' + timeStr + '</td><td>' + runs + '</td><td>' + searches + '</td><td>' + loaded + '</td><td>' + dms + '</td><td>' + varStr + '</td></tr>\n';
+          var its = rec && rec.iterationsMs ? rec.iterationsMs : [];
+          var avgStr = its.length ? formatTime(rec.iterationAvgMs) : '-';
+          var medStr = its.length ? formatTime(rec.iterationMedianMs) : '-';
+          var wits = rec && rec.wallIterationsMs ? rec.wallIterationsMs : [];
+          var wAvgStr = wits.length ? formatTime(rec.wallIterationAvgMs) : '-';
+          var wMedStr = wits.length ? formatTime(rec.wallIterationMedianMs) : '-';
+          rows += '<tr><td>Level ' + l + '</td><td>' + timeStr + '</td><td>' + runs + '</td><td>' + searches + '</td><td>' + loadedStr + '</td><td>' + dms + '</td><td>' + varStr + '</td><td>' + avgStr + '</td><td>' + medStr + '</td><td>' + wAvgStr + '</td><td>' + wMedStr + '</td></tr>\n';
         }
         var eventsHtml = '';
         if (sess.events && sess.events.length > 0) {
@@ -793,7 +826,7 @@
           '</style>',
           '</head><body><div class="card"><h2>Blockly Maze Session Report</h2><p><strong>Session ID:</strong> ' + escapeHtml(sess.sessionId) + '<br><strong>User:</strong> ' + escapeHtml(sess.userId) + '<br><strong>Total Time:</strong> ' + formatTime(sess.totalElapsedMs) + '<br><strong>Runs:</strong> ' + (sess.totalProgramRuns || 0) + ' | <strong>Searches:</strong> ' + (sess.totalMomotSearches || 0) + ' | <strong>Loaded:</strong> ' + (sess.totalSolutionsLoaded || 0) + ' | <strong>DMs:</strong> ' + (sess.totalDirectManipulations || 0) + '</p>',
           '<h3>Level Summaries</h3>',
-          '<table><thead><tr><th>Level</th><th>Time</th><th>Runs</th><th>Searches</th><th>Loaded</th><th>DM</th><th>Variant</th></tr></thead><tbody>' + rows + '</tbody></table>',
+          '<table><thead><tr><th>Level</th><th>Time</th><th>Runs</th><th>Searches</th><th>Loaded</th><th>DM</th><th>Variant</th><th>Active iter. avg</th><th>Active iter. median</th><th>Wall iter. avg</th><th>Wall iter. median</th></tr></thead><tbody>' + rows + '</tbody></table>',
           '<h3 style="margin-top:24px;">Activity Timeline & Workspace Snapshots</h3>',
           eventsHtml,
           '</div>',

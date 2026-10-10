@@ -782,6 +782,7 @@
                 setStoredLevel(1);
                 saveSessionData();
                 clearCachedLevelSolutions();
+                getLevelArrivedAt(); // a new session starts at level 1 now
 
                 var m = document.getElementById('levelTimerModal');
                 if (m) m.style.display = 'none';
@@ -1017,6 +1018,21 @@
         return '';
     }
 
+    // Wall-clock time of the first arrival at this level in the current timer session (kept per session and level).
+    function getLevelArrivedAt() {
+        var key = 'blocky_level_arrived_' + sessionId + '_' + level;
+        try {
+            if (window.sessionStorage) {
+                var stored = window.sessionStorage.getItem(key);
+                if (stored) return stored;
+                var now = new Date().toISOString();
+                window.sessionStorage.setItem(key, now);
+                return now;
+            }
+        } catch (e) {}
+        return null;
+    }
+
     function recordProgramRun() {
         if (!sessionId) return;
         try {
@@ -1041,6 +1057,8 @@
                         recordExecution: true,
                         variant: getVariant(),
                         timestamp: nowIso,
+                        levelElapsedMs: Math.floor(currentElapsedMs),
+                        levelArrivedAt: getLevelArrivedAt(),
                         xml: getCurrentWorkspaceXml()
                     })
                 }).then(function(r) {
@@ -1096,6 +1114,7 @@
             promptUserForSession();
         } else {
             lastTick = Date.now();
+            getLevelArrivedAt(); // stamp the arrival at this level
             sendLevelTime(false);
         }
 

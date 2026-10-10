@@ -549,6 +549,7 @@ public class BlockyUI extends Application {
                 + "        var btnCont = document.createElement('div'); btnCont.style.display = 'flex'; btnCont.style.gap = '4px'; "
                 + "        var mRunBtn = mkBtn('__momotRunBtn', 'Run', 'Execute MOMoT search'); "
                 + "        mRunBtn.style.background = 'rgba(70, 150, 70, 0.6)'; "
+                + "        mRunBtn.style.display = 'none'; "
                 + "        var mStopBtn = mkBtn('__momotStopBtn', 'Stop', 'Stop current MOMoT search'); "
                 + "        mStopBtn.style.background = 'rgba(180, 50, 50, 0.6)'; "
                 + "        btnCont.appendChild(mRunBtn); btnCont.appendChild(mStopBtn); "
@@ -558,10 +559,8 @@ public class BlockyUI extends Application {
                 + "        settings.appendChild(labRuns); settings.appendChild(inpRuns); "
                 + "        settings.appendChild(labSolLen); settings.appendChild(inpSolLen); "
                 + "        settings.appendChild(btnCont); "
-                + "        var refreshBtn = mkBtn('__momotRefreshBtn', 'Refresh', 'Reload solutions from output folders'); "
                 + "        var logToggleBtn = mkBtn('__momotLogToggleBtn', 'Log', 'Show or hide the MoMoT log'); "
                 + "        var clearOverlayBtn = mkBtn('__momotClearOverlayBtn', 'Clear path', 'Clear the comparison path and the marker from the maze'); "
-                + "        right.appendChild(refreshBtn); "
                 + "        right.appendChild(logToggleBtn); "
                 + "        right.appendChild(clearOverlayBtn); "
                 + "        header.appendChild(title); header.appendChild(right); "
@@ -954,7 +953,6 @@ public class BlockyUI extends Application {
                 + "          } catch(e) { if (!isSilent) setStatus('Refresh failed'); } "
                 + "        } "
                 + "        window.__momotShowAndRefresh = function(){ try { panel.style.display = 'block'; } catch(e) {} try { refresh(true); } catch(e2) {} }; "
-                + "        refreshBtn.addEventListener('click', function(){ refresh(); }); "
                 + "        clearOverlayBtn.addEventListener('click', function(){ "
                 + "          try { if (window.__dbgDrawComparisonPath) window.__dbgDrawComparisonPath([]); } catch(eC) {} "
                 + "          try { "
@@ -2038,7 +2036,7 @@ public class BlockyUI extends Application {
         } else {
             System.setProperty("blocky.allowIfElse", "true");
         }
-        // PROTOTYPE: -Dblocky.rules.wrap=true switches to the *_wrap.henshin variant (adds wrap/unwrap moves)
+        // The *_wrap.henshin variant (adds wrap/unwrap moves) is the default; -Dblocky.rules.wrap=false turns it off
         henshin = MomotFirstGoalBenchmarkRunner.withWrapMoves(henshin);
         System.setProperty("blocky.henshin", "../blocky_model/transformations/" + henshin);
 

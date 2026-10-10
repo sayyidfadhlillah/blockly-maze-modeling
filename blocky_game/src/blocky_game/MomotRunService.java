@@ -543,7 +543,7 @@ public final class MomotRunService {
 
             String currentHenshin = System.getProperty("blocky.henshin");
             if (currentHenshin != null && !currentHenshin.isBlank()) {
-                if (Boolean.getBoolean("blocky.rules.wrap") && !currentHenshin.contains("_wrap")) {
+                if (MomotFirstGoalBenchmarkRunner.wrapMovesEnabled() && !currentHenshin.contains("_wrap")) {
                     String wrapped = MomotFirstGoalBenchmarkRunner.withWrapMoves(currentHenshin);
                     File wrappedFile = resolveExistingFile(wrapped);
                     if (wrappedFile.exists() && wrappedFile.isFile()) {

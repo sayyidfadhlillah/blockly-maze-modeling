@@ -124,16 +124,18 @@ describe('blockyUIOverlay.js Test Suite', () => {
         const runBtn = window.document.getElementById('__momotRunBtn');
         const stopBtn = window.document.getElementById('__momotStopBtn');
         const refreshBtn = window.document.getElementById('__momotRefreshBtn');
+        const clearBtn = window.document.getElementById('__momotClearOverlayBtn');
         const gearBtn = window.document.getElementById('__momotGearBtn');
         const closeBtn = window.document.getElementById('__momotCloseBtn');
 
         assert.ok(runBtn, '#__momotRunBtn should exist');
         assert.ok(stopBtn, '#__momotStopBtn should exist');
-        assert.ok(refreshBtn, '#__momotRefreshBtn should exist');
+        assert.strictEqual(refreshBtn, null, 'Refresh button was removed (the table refreshes itself)');
+        assert.ok(clearBtn, '#__momotClearOverlayBtn (Clear path) should exist');
         assert.ok(gearBtn, '#__momotGearBtn should exist');
         assert.ok(closeBtn, '#__momotCloseBtn should exist');
 
-        assert.notStrictEqual(runBtn.style.display, 'none', 'Run button should be visible');
+        assert.strictEqual(runBtn.style.display, 'none', 'Run button should be hidden (search starts from the Direct Manipulation marker)');
         assert.notStrictEqual(stopBtn.style.display, 'none', 'Stop button should be visible');
 
         // Inputs should be in the DOM with defaults
