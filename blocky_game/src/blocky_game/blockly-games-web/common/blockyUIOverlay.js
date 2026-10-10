@@ -312,6 +312,7 @@
                 panel.style.border = '1px solid rgba(255,255,255,0.15)';
                 panel.style.boxShadow = '2px 2px 8px rgba(0,0,0,0.4)';
                 panel.style.zIndex = '99999';
+                panel.style.display = 'none'; // hidden by default; the "Execution Log" button toggles it
 
                 var header = document.createElement('div'); header.id = '__execLogHeader';
                 header.style.display = 'flex'; header.style.alignItems = 'center'; header.style.justifyContent = 'space-between';
@@ -505,13 +506,28 @@
                     var cur = settings.style.display;
                     settings.style.display = (cur === 'none' || !cur) ? 'flex' : 'none';
                 });
-                var mCloseBtn = mkBtn('__momotCloseBtn', '✕', 'Close / Hide MoMoT Panel');
+                var mCloseBtn = mkBtn('__momotCloseBtn', '✕', 'Close / Hide MoMoT Panel (available when the search has finished or was stopped)');
+                function momotSearchActive() {
+                    return window.__momotIsRunning === true || (typeof progTimer !== 'undefined' && !!progTimer);
+                }
+                window.__momotSearchActive = momotSearchActive;
+                function updateCloseBtnState() {
+                    try {
+                        var active = momotSearchActive();
+                        mCloseBtn.disabled = active;
+                        mCloseBtn.style.opacity = active ? '0.35' : '1';
+                        mCloseBtn.style.cursor = active ? 'not-allowed' : 'pointer';
+                    } catch(e) {}
+                }
                 mCloseBtn.addEventListener('click', function() {
                     try {
+                        if (momotSearchActive()) return;
                         var p = document.getElementById('__momotPanel');
                         if (p) p.style.display = 'none';
                     } catch(e) {}
                 });
+                updateCloseBtnState();
+                setInterval(updateCloseBtnState, 500);
                 right.appendChild(mRunBtn);
                 right.appendChild(mStopBtn);
                 right.appendChild(refreshBtn);
@@ -1264,25 +1280,8 @@
                     var debugSkipBtn = __dbgMkBtn('debugSkipEndButton', 'Skip End', 'Jump to final outcome');
                     var directManipBtn = __dbgMkBtn('directManipulationButton', 'Direct Manipulation', 'Teleport pegman to an empty/goal cell (paused or before run)');
                     directManipBtn.style.marginLeft = '8px';
-                    var momotToggleBtn = __dbgMkBtn('momotTogglePanelButton', 'MoMoT Panel', 'Show or hide MoMoT solutions panel');
-                    momotToggleBtn.style.marginLeft = '8px';
                     var execLogToggleBtn = __dbgMkBtn('execLogTogglePanelButton', 'Execution Log', 'Show or hide Execution Log panel');
                     execLogToggleBtn.style.marginLeft = '8px';
-
-                    momotToggleBtn.addEventListener('click', function() {
-                        try {
-                            __momotEnsure();
-                            var p = document.getElementById('__momotPanel');
-                            if (p) {
-                                if (p.style.display === 'none' || !p.style.display) {
-                                    if (window.__momotShowAndRefresh) window.__momotShowAndRefresh();
-                                    else p.style.display = 'block';
-                                } else {
-                                    p.style.display = 'none';
-                                }
-                            }
-                        } catch(e) {}
-                    });
 
                     execLogToggleBtn.addEventListener('click', function() {
                         try {
@@ -1325,6 +1324,7 @@
                     window.__dmActive = false;
                     function __dmCanEnable() {
                         try {
+                            if (typeof window.__momotSearchActive === 'function' && window.__momotSearchActive()) return false;
                             var paused = (!window.__dbgTimer);
                             var inDebug = !!window.__dbgSessionStarted;
                             var beforeRun = !window.__blockyRunStarted && !inDebug;
@@ -1353,7 +1353,15 @@
                     }
                     function __dmStart() {
                         try {
-                            if (!__dmCanEnable()) { __dmStop(); return; }
+                            if (!__dmCanEnable()) {
+                                __dmStop();
+                                try {
+                                    if (typeof window.__momotSearchActive === 'function' && window.__momotSearchActive() && window.__momotSetStatus) {
+                                        window.__momotSetStatus('A search is running. Press Stop before placing a new marker.');
+                                    }
+                                } catch(eM) {}
+                                return;
+                            }
                             var svg = document.getElementById('svgMaze');
                             if (!svg) return;
                             window.__dmActive = true; __dmUpdateButton();

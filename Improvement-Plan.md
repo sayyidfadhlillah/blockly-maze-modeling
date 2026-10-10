@@ -17,7 +17,7 @@ Related documents: `Benchmark-Analysis.md` (every benchmark result and its limit
 | 7 | Fixed exploration parameters, hidden from the MoMoT panel | Users should not have to choose seeds, population, iterations, runs, solution length or algorithm | A usability request. Defaults sit between the old panel and the benchmark settings; the solution length is a constant 10 | **Implemented, compiles, GUI check pending** | Check in the app (section 3.7) |
 | 8 | Remove the Execution log window of the game | Less clutter in the game UI | A usability request | **Implemented, compiles, GUI check pending** | Check in the app (section 3.8) |
 | 9 | MoMoT panel: progress bar, elapsed time, log hidden behind a button | Seeing that a search runs and how far it is, without the log | A usability request. The data (`nfe`) was already delivered to the panel | **Implemented, compiles, GUI check pending** | Check in the app, in particular the run counter (section 3.9) |
-| 10 | MoMoT panel: no Refresh, Load or Run buttons; a "Clear path" button; the search starts when a Direct Manipulation marker is placed | The panel refreshes itself, double-click already loads a row, and placing the marker is the only way to define the target | A usability request | **Implemented, compiles, GUI check pending** | Check in the app, in particular restarting by placing a second marker (section 3.10) |
+| 10 | MoMoT panel: no Refresh, Load or Run buttons; a "Clear path" button; the search starts when a Direct Manipulation marker is placed | The panel refreshes itself, double-click already loads a row, and placing the marker is the only way to define the target | A usability request | **Implemented, compiles, GUI check pending** | Check in the app, in particular that Direct Manipulation and the close button are blocked while a search runs (section 3.10) |
 
 **Two honest remarks before the details**
 
@@ -414,7 +414,7 @@ A manual Refresh also cleared two overlays on the maze (the comparison path and 
 **Decision (project owner).**
 1. Remove Refresh and Load; keep double-click as the way to load a row.
 2. Give the two overlays their own button, **Clear path**.
-3. Start the search automatically when a Direct Manipulation click is accepted. A click on a wall or other invalid cell still does nothing. Hide the Run button; Stop stays. Placing a second marker while a search runs stops the old search and starts a new one.
+3. Start the search automatically when a Direct Manipulation click is accepted. A click on a wall or other invalid cell still does nothing. Hide the Run button; Stop stays. Placing a second marker is **not allowed while a search runs** (changed from "stops the old search and starts a new one", see "Change: gate instead of restart" below): the user presses Stop first.
 4. Do **not** shorten the search: it still runs its whole budget (section 3.7). The grace period after the first goal that was considered for this was rejected, because the full run is what improves `Edits`, `Actions` and `Blocks`.
 
 **How to achieve it (`blocky_game/src/blocky_game/BlockyUI.java`).** The same rules as section 3.9 apply to the JavaScript strings: no `//` comments inside them, single quotes, no non-ASCII characters.
@@ -460,7 +460,7 @@ In the Direct Manipulation click handler (the code that calls `bridge.teleportPe
 + "                __dmStop(); "
 ```
 
-*Step 5: ignore the late callbacks of a replaced run.* `MomotRunService.runAsync` already interrupts the running search before it starts a new one, and `runInternal` takes a lock, so two searches never overlap. What is missing is the old run's callbacks, which fire after the old thread ends, when the new run is already going: the finish callback would call `__momotProgressDone()` and the new run's bar would say `ended`. Give every run an id and let the callbacks of an older run do nothing:
+*Step 5: ignore the late callbacks of a replaced run.* (Applies to the desktop build, where `BlockyUI.startMomotWithParams` can replace a run. In the web build the server refuses a second run, see "Change: gate instead of restart".) `MomotRunService.runAsync` already interrupts the running search before it starts a new one, and `runInternal` takes a lock, so two searches never overlap. What is missing is the old run's callbacks, which fire after the old thread ends, when the new run is already going: the finish callback would call `__momotProgressDone()` and the new run's bar would say `ended`. Give every run an id and let the callbacks of an older run do nothing:
 
 ```java
 // field of BlockyUI
@@ -484,17 +484,23 @@ Stop alone does not change the id, so the finish callback of a stopped run still
 **What stays the same.** The search itself: population 100, 100 iterations, 8 runs, solution length 10 and no early stop (section 3.7). The pegman is still moved back to its position from before the marker (`__preDmQ`, saved when Direct Manipulation starts) when the search starts, and the marker stays on the maze.
 
 **Known limits.**
-- Every accepted marker starts a full search (8 runs of 10,000 evaluations). A marker placed by mistake is handled with Stop, or by placing the right marker, which restarts the search.
+- Every accepted marker starts a full search (8 runs of 10,000 evaluations). A marker placed by mistake is handled with Stop, after which a new marker can be placed.
 - Loading a row is only possible with a double-click; a single click selects it and draws its comparison path. The status line says so.
 - The Run button still exists (hidden) because the shared function is registered on it; removing the element means removing the line `mRunBtn.addEventListener(...)` too.
 
-**How it was checked.** `mvn -q -pl blocky_game compile` passes. A search of the source finds no `refreshBtn`, `loadBtn`, `__momotLoadBtn` or `__momotActions` left. The app was **not** run.
+**Change: gate instead of restart.** Observation: in the web build (Docker) `SessionContext.runMomotWithParams` returns with `MoMoT run already in progress` when a run is active, so a second marker never started a search, while the browser (`webBridge.runMomotWithParams`) had already cleared the table and restarted the progress bar. The plan's "stop and restart" was therefore not implemented for the web build. Decision (project owner): do not restart, block instead, because it is much smaller than a server-side stop-before-restart (which has to deal with the old thread ending after the new run has started) and it matches the close button rule below.
+- `window.__momotSearchActive()` (defined with the MoMoT panel in `blockyUIOverlay.js`) is true while `window.__momotIsRunning` is true or the progress timer runs.
+- `__dmCanEnable` (in `blockyUIOverlay.js` and in the injected script in `BlockyUI.java`) returns false while a search is active, so the Direct Manipulation button is greyed out; trying to start it shows `A search is running. Press Stop before placing a new marker.` No marker is placed and the pegman does not move.
+- The panel's close button (✕) is disabled while a search is active and works again after the search finished or was stopped.
+- The server keeps refusing a second run, so the gate and the server agree. Stop clears `__momotIsRunning` and the progress timer, so it is always the way out. Risk: if the browser does not notice that a search finished, the flag stays true and blocks; Stop clears it.
+
+**How it was checked.** `mvn -q compile` (from the root) passes and `node --check` accepts `blockyUIOverlay.js`. A search of the source finds no `refreshBtn`, `loadBtn`, `__momotLoadBtn` or `__momotActions` left. The app was **not** run.
 
 **How to check it works in the app.**
 - The header shows `Show log` and `Clear path`; there is no Refresh. The row under the table (Load) is gone, and Stop is the only button in the button row.
 - Click `Direct Manipulation`, then a path cell: the search starts without any other click, the progress bar appears, and the table fills.
 - Click `Direct Manipulation`, then a wall: nothing starts.
-- During a run, place a second marker elsewhere: the bar restarts at run 1 and does not show `ended`; the table shows the new search.
+- During a run, the Direct Manipulation button is greyed out and the close button (✕) is disabled. After Stop (or when the run ends) both work again, and a new marker starts a new search whose bar starts at run 1.
 - Press Stop during a run: the bar shows `ended` and the table keeps its rows.
 - Select a row: the status says `(double-click to load)` and the comparison path is drawn. Double-click it: the program loads into the game.
 - Press `Clear path`: the comparison path and the marker disappear from the maze.
@@ -548,7 +554,7 @@ Stop alone does not change the id, so the finish callback of a stopped run still
 - [ ] With `GATED`, non-goal candidates remain listed after a solution is found (archive of section 3.6, change B).
 - [ ] Benchmark output is unchanged with `blocky.nonGoalArchive=0`.
 - [ ] The MoMoT panel shows a progress bar with elapsed time during a run, the log is hidden by default and toggles with `Show log` / `Hide log`, and the table is unchanged (section 3.9).
-- [ ] The MoMoT panel has no Refresh, Load or Run button, has `Clear path`, a Direct Manipulation click on a valid cell starts the search, and a second marker restarts it with a correct progress bar (section 3.10).
+- [ ] The MoMoT panel has no Refresh, Load or Run button, has `Clear path`, a Direct Manipulation click on a valid cell starts the search, Direct Manipulation and the close button (✕) are blocked while a search runs, and a new marker after Stop starts a new search with a correct progress bar (section 3.10).
 - [ ] The Execution log window is gone and running or stepping a program still works (section 3.8).
 - [ ] The MoMoT panel has no parameter fields, and the status line on Run shows `solLen=10` (section 3.7).
 - [ ] No file under `src-gen/` was modified.

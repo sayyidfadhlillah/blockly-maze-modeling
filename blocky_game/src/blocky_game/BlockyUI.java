@@ -1422,6 +1422,7 @@ public class BlockyUI extends Application {
                 + "        window.__dmActive = false; "
                 + "        function __dmCanEnable() { "
                 + "          try { "
+                + "            if (typeof window.__momotSearchActive === 'function' && window.__momotSearchActive()) return false; "
                 + "            var paused = (!window.__dbgTimer); "
                 + "            var inDebug = !!window.__dbgSessionStarted; "
                 + "            var beforeRun = !window.__blockyRunStarted && !inDebug; "

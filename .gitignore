@@ -29,3 +29,6 @@ level_sessions/
 blocky_game/level_sessions/
 blocky_game/blocky_game/level_sessions/
 
+
+# local secrets (admin password for docker compose)
+.env
